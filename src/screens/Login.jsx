@@ -2,7 +2,6 @@ import { useAppStore } from '../store/useAppStore'
 import { sb } from '../lib/supabase'
 import { useState } from 'react'
 
-// ── Original iLab logo ─────────────────────────────────────────────────────
 function ILabLogo({ size = 120 }) {
   return (
     <svg width={size} height={size} viewBox="0 0 512 512" xmlns="http://www.w3.org/2000/svg">
@@ -34,9 +33,8 @@ function ILabLogo({ size = 120 }) {
   )
 }
 
-// ── Selector card ──────────────────────────────────────────────────────────
 function SelectorCard({ mode, selected, onSelect }) {
-  const isTeam     = mode === 'team'
+  const isTeam      = mode === 'team'
   const activeColor = isTeam ? '#1D9E75' : '#534AB7'
   const activeBg    = isTeam ? '#E1F5EE' : '#EEEDFE'
   const badgeBg     = isTeam ? '#9FE1CB' : '#CECBF6'
@@ -65,21 +63,13 @@ function SelectorCard({ mode, selected, onSelect }) {
   )
 
   return (
-    <div
-      onClick={() => onSelect(mode)}
-      style={{
-        flex: 1,
-        background: selected ? activeBg : 'var(--surface)',
-        border: selected ? `2px solid ${activeColor}` : '1.5px solid var(--border)',
-        borderRadius: 14,
-        padding: '16px 14px 14px',
-        cursor: 'pointer',
-        textAlign: 'center',
-        position: 'relative',
-        transition: 'border-color 0.15s, background 0.15s',
-        userSelect: 'none',
-      }}
-    >
+    <div onClick={() => onSelect(mode)} style={{
+      flex: 1, background: selected ? activeBg : 'var(--surface)',
+      border: selected ? `2px solid ${activeColor}` : '1.5px solid var(--border)',
+      borderRadius: 14, padding: '16px 14px 14px', cursor: 'pointer',
+      textAlign: 'center', position: 'relative',
+      transition: 'border-color 0.15s, background 0.15s', userSelect: 'none',
+    }}>
       {selected && (
         <div style={{ position: 'absolute', top: 10, right: 10, width: 18, height: 18, borderRadius: '50%', background: activeColor, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
           <svg width="10" height="10" viewBox="0 0 10 10" fill="none">
@@ -90,11 +80,95 @@ function SelectorCard({ mode, selected, onSelect }) {
       <div style={{ width: 56, height: 56, borderRadius: 14, background: isTeam ? '#E1F5EE' : '#EEEDFE', margin: '0 auto 10px', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
         {isTeam ? teamIcon : soloIcon}
       </div>
-      <div style={{ display: 'inline-block', fontSize: 11, fontWeight: 600, borderRadius: 20, padding: '2px 9px', marginBottom: 7, background: badgeBg, color: badgeColor }}>
-        {label}
-      </div>
+      <div style={{ display: 'inline-block', fontSize: 11, fontWeight: 600, borderRadius: 20, padding: '2px 9px', marginBottom: 7, background: badgeBg, color: badgeColor }}>{label}</div>
       <div style={{ fontSize: 13, fontWeight: 600, color: 'var(--text)', marginBottom: 5 }}>{title}</div>
       <div style={{ fontSize: 11.5, color: 'var(--text3)', lineHeight: 1.5 }}>{desc}</div>
+    </div>
+  )
+}
+
+// ── iLab Solo Sign-Up Form ─────────────────────────────────────────────────
+function SignUpForm({ onSuccess, onCancel }) {
+  const [form, setForm] = useState({ name: '', email: '', password: '', confirm: '' })
+  const [error, setError] = useState('')
+  const [loading, setLoading] = useState(false)
+
+  async function handleSignUp(e) {
+    e.preventDefault()
+    setError('')
+    if (!form.name.trim())           { setError('Please enter your full name.'); return }
+    if (!form.email.trim())          { setError('Please enter your email address.'); return }
+    if (form.password.length < 6)   { setError('Password must be at least 6 characters.'); return }
+    if (form.password !== form.confirm) { setError('Passwords do not match.'); return }
+    setLoading(true)
+
+    const { data: existing } = await sb.from('solo_users').select('id').ilike('email', form.email.trim()).maybeSingle()
+    if (existing) { setError('An account with this email already exists. Please sign in.'); setLoading(false); return }
+
+    const { data, error: insertErr } = await sb.from('solo_users').insert({
+      name: form.name.trim(),
+      email: form.email.trim().toLowerCase(),
+      password: form.password,
+      is_active: true,
+      active_modules: [],
+    }).select().single()
+
+    if (insertErr) { setError('Error creating account. Please try again.'); setLoading(false); return }
+    setLoading(false)
+    onSuccess(data)
+  }
+
+  return (
+    <div>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 20 }}>
+        <button onClick={onCancel} style={{ border: 'none', background: 'none', cursor: 'pointer', fontSize: 20, color: 'var(--text3)', padding: 0, lineHeight: 1 }}>←</button>
+        <div>
+          <div style={{ fontWeight: 700, fontSize: 17, color: 'var(--text)' }}>Create iLab Solo account</div>
+          <div style={{ fontSize: 12, color: 'var(--text3)', marginTop: 2 }}>Free — organize your research independently</div>
+        </div>
+      </div>
+
+      <div style={{ display: 'flex', justifyContent: 'center', marginBottom: 20 }}>
+        <div style={{ display: 'inline-flex', alignItems: 'center', gap: 7, background: '#EEEDFE', border: '1px solid #CECBF6', borderRadius: 99, padding: '5px 14px' }}>
+          <svg width="14" height="14" viewBox="0 0 32 32" fill="none">
+            <circle cx="16" cy="11" r="5" stroke="#534AB7" strokeWidth="2"/>
+            <path d="M6 28c0-5.523 4.477-10 10-10s10 4.477 10 10" stroke="#534AB7" strokeWidth="2" strokeLinecap="round"/>
+          </svg>
+          <span style={{ fontSize: 12, fontWeight: 600, color: '#534AB7' }}>iLab Solo</span>
+        </div>
+      </div>
+
+      <form onSubmit={handleSignUp}>
+        <div className="field">
+          <label>Full name *</label>
+          <input value={form.name} onChange={e => { setForm(f => ({...f, name: e.target.value})); setError('') }} placeholder="e.g. Jane Smith" autoComplete="name" />
+        </div>
+        <div className="field">
+          <label>Email address *</label>
+          <input type="email" value={form.email} onChange={e => { setForm(f => ({...f, email: e.target.value})); setError('') }} placeholder="your@email.com" autoComplete="email" />
+        </div>
+        <div className="field">
+          <label>Password * (min 6 characters)</label>
+          <input type="password" value={form.password} onChange={e => { setForm(f => ({...f, password: e.target.value})); setError('') }} placeholder="••••••••" autoComplete="new-password" />
+        </div>
+        <div className="field">
+          <label>Confirm password *</label>
+          <input type="password" value={form.confirm} onChange={e => { setForm(f => ({...f, confirm: e.target.value})); setError('') }} placeholder="••••••••" autoComplete="new-password" />
+        </div>
+
+        {error && (
+          <div style={{ fontSize: 13, color: 'var(--accent2)', background: 'var(--accent2-light)', borderRadius: 8, padding: '8px 12px', marginBottom: 16 }}>⚠️ {error}</div>
+        )}
+
+        <button type="submit" disabled={loading} style={{ width: '100%', padding: '12px', background: loading ? 'var(--border)' : '#534AB7', color: loading ? 'var(--text3)' : '#fff', border: 'none', borderRadius: 8, fontWeight: 600, fontSize: 15, cursor: loading ? 'not-allowed' : 'pointer', transition: 'background 0.2s' }}>
+          {loading ? 'Creating account…' : 'Create free account'}
+        </button>
+      </form>
+
+      <div style={{ textAlign: 'center', marginTop: 14, fontSize: 12, color: 'var(--text3)' }}>
+        Already have an account?{' '}
+        <span style={{ color: '#534AB7', fontWeight: 600, cursor: 'pointer' }} onClick={onCancel}>Sign in</span>
+      </div>
     </div>
   )
 }
@@ -108,24 +182,29 @@ export default function Login() {
   const [error, setError]           = useState('')
   const [loading, setLoading]       = useState(false)
   const [showPassword, setShowPassword] = useState(false)
+  const [showSignUp, setShowSignUp] = useState(false)
+  const [signUpSuccess, setSignUpSuccess] = useState(false)
 
   const accentColor = mode === 'solo' ? '#534AB7' : '#0d47a1'
 
   function handleModeSelect(m) {
-    setMode(m)
-    setLoginMode(m)
-    setError('')
+    setMode(m); setLoginMode(m); setError('')
+    setShowSignUp(false); setSignUpSuccess(false)
+  }
+
+  function handleSignUpSuccess(newUser) {
+    setIdentifier(newUser.email)
+    setShowSignUp(false)
+    setSignUpSuccess(true)
   }
 
   async function handleLogin(e) {
     e.preventDefault()
     if (!mode) { setError('Please select how you are using iLab first.'); return }
-    if (!identifier.trim() || !password.trim()) { setError('Please enter your ID and password.'); return }
+    if (!identifier.trim() || !password.trim()) { setError('Please enter your email and password.'); return }
     setLoading(true); setError('')
-
     const identifierLower = identifier.trim().toLowerCase()
 
-    // ── iLab Team login ────────────────────────────────────────────────────
     if (mode === 'team') {
       const { data: adminSettings } = await sb.from('settings').select('value').eq('key', 'admin_email').maybeSingle()
       const adminEmail = adminSettings?.value || 'motlagh999@gmail.com'
@@ -147,29 +226,18 @@ export default function Login() {
       const adminLevel = user.admin_level || 0
       const role = user.role === 'admin' || adminLevel >= 1 ? 'admin' : user.role
       setSession({ role, username: user.name, userId: user.id, email: user.email, adminLevel, photoUrl: user.photo_url, avatar: user.avatar, loginMode: 'team' })
-      setLoading(false)
-      return
+      setLoading(false); return
     }
 
-    // ── iLab Solo login ────────────────────────────────────────────────────
     if (mode === 'solo') {
       const { data: soloUser, error: soloErr } = await sb
-        .from('solo_users')
-        .select('*')
-        .eq('is_active', true)
-        .ilike('email', identifierLower)
-        .maybeSingle()
+        .from('solo_users').select('*').eq('is_active', true).ilike('email', identifierLower).maybeSingle()
       if (soloErr || !soloUser) { setError('No Solo account found. Please sign up first.'); setLoading(false); return }
       if (soloUser.password !== password) { setError('Incorrect password.'); setLoading(false); return }
       setSession({
-        role: 'solo',
-        username: soloUser.name,
-        userId: soloUser.id,
-        email: soloUser.email,
-        photoUrl: soloUser.photo_url,
-        avatar: soloUser.avatar,
-        activeModules: soloUser.active_modules || [],
-        loginMode: 'solo',
+        role: 'solo', username: soloUser.name, userId: soloUser.id,
+        email: soloUser.email, photoUrl: soloUser.photo_url, avatar: soloUser.avatar,
+        activeModules: soloUser.active_modules || [], loginMode: 'solo',
       })
       setLoading(false)
     }
@@ -179,104 +247,99 @@ export default function Login() {
     <div style={{ minHeight: '100vh', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', background: 'var(--bg)', padding: 20 }}>
       <div style={{ width: '100%', maxWidth: 420 }}>
 
-        {/* Logo */}
         <div style={{ textAlign: 'center', marginBottom: 28 }}>
           <ILabLogo size={120} />
         </div>
 
         <div className="card" style={{ padding: '28px 28px 24px' }}>
 
-          {/* Step 1: Mode selector */}
-          <div style={{ fontSize: 12, fontWeight: 600, color: 'var(--text3)', textTransform: 'uppercase', letterSpacing: '0.07em', marginBottom: 10, textAlign: 'center' }}>
-            How are you using iLab?
-          </div>
-          <div style={{ display: 'flex', gap: 12, marginBottom: 20 }}>
-            <SelectorCard mode="team" selected={mode === 'team'} onSelect={handleModeSelect} />
-            <SelectorCard mode="solo" selected={mode === 'solo'} onSelect={handleModeSelect} />
-          </div>
-
-          {/* Org note (Team only) */}
-          {mode === 'team' && (
-            <div style={{ background: '#E1F5EE', border: '0.5px solid #9FE1CB', borderRadius: 8, padding: '8px 12px', fontSize: 12, color: '#085041', marginBottom: 16, lineHeight: 1.5 }}>
-              Access is managed by your organization admin. Contact them if you need an account.
-            </div>
-          )}
-
-          {/* Divider — only shown after selection */}
-          {mode && (
-            <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 18 }}>
-              <div style={{ flex: 1, height: 1, background: 'var(--border)' }} />
-              <span style={{ fontSize: 12, color: 'var(--text3)' }}>
-                {mode === 'team' ? 'Sign in to iLab Team' : 'Sign in to iLab Solo'}
-              </span>
-              <div style={{ flex: 1, height: 1, background: 'var(--border)' }} />
-            </div>
-          )}
-
-          {/* Login form — fields dimmed until mode selected */}
-          <form onSubmit={handleLogin}>
-            <div className="field" style={{ opacity: mode ? 1 : 0.35, pointerEvents: mode ? 'auto' : 'none', transition: 'opacity 0.2s' }}>
-              <label>Email address</label>
-              <input
-                type="text"
-                value={identifier}
-                onChange={e => { setIdentifier(e.target.value); setError('') }}
-                placeholder={mode === 'solo' ? 'your@email.com' : 'name or netid@illinois.edu'}
-                autoComplete="username"
-                disabled={!mode}
-              />
-            </div>
-            <div className="field" style={{ opacity: mode ? 1 : 0.35, pointerEvents: mode ? 'auto' : 'none', transition: 'opacity 0.2s' }}>
-              <label>Password</label>
-              <div style={{ position: 'relative' }}>
-                <input
-                  type={showPassword ? 'text' : 'password'}
-                  value={password}
-                  onChange={e => { setPassword(e.target.value); setError('') }}
-                  placeholder="••••••••"
-                  autoComplete="current-password"
-                  style={{ paddingRight: 44 }}
-                  disabled={!mode}
-                />
-                <button type="button" onClick={() => setShowPassword(s => !s)}
-                  style={{ position: 'absolute', right: 10, top: '50%', transform: 'translateY(-50%)', border: 'none', background: 'none', cursor: 'pointer', fontSize: 16, color: 'var(--text3)', padding: 4 }}>
-                  {showPassword ? '🙈' : '👁️'}
-                </button>
+          {/* Show sign-up form OR login form */}
+          {showSignUp ? (
+            <SignUpForm onSuccess={handleSignUpSuccess} onCancel={() => setShowSignUp(false)} />
+          ) : (
+            <>
+              <div style={{ fontSize: 12, fontWeight: 600, color: 'var(--text3)', textTransform: 'uppercase', letterSpacing: '0.07em', marginBottom: 10, textAlign: 'center' }}>
+                How are you using iLab?
               </div>
-            </div>
+              <div style={{ display: 'flex', gap: 12, marginBottom: 20 }}>
+                <SelectorCard mode="team" selected={mode === 'team'} onSelect={handleModeSelect} />
+                <SelectorCard mode="solo" selected={mode === 'solo'} onSelect={handleModeSelect} />
+              </div>
 
-            {error && (
-              <div style={{ fontSize: 13, color: 'var(--accent2)', background: 'var(--accent2-light)', borderRadius: 8, padding: '8px 12px', marginBottom: 16 }}>⚠️ {error}</div>
-            )}
+              {mode === 'team' && (
+                <div style={{ background: '#E1F5EE', border: '0.5px solid #9FE1CB', borderRadius: 8, padding: '8px 12px', fontSize: 12, color: '#085041', marginBottom: 16, lineHeight: 1.5 }}>
+                  Access is managed by your organization admin. Contact them if you need an account.
+                </div>
+              )}
 
-            <button
-              type="submit"
-              style={{ width: '100%', justifyContent: 'center', fontSize: 15, padding: '12px', background: mode ? accentColor : 'var(--border)', color: mode ? '#fff' : 'var(--text3)', border: 'none', borderRadius: 8, cursor: mode ? 'pointer' : 'not-allowed', fontWeight: 600, transition: 'background 0.2s' }}
-              disabled={loading || !mode}>
-              {loading ? 'Signing in…' : mode === 'team' ? 'Sign in to iLab Team' : mode === 'solo' ? 'Sign in to iLab Solo' : 'Select a login type above'}
-            </button>
-          </form>
+              {signUpSuccess && (
+                <div style={{ background: '#EEEDFE', border: '1px solid #CECBF6', borderRadius: 8, padding: '10px 14px', fontSize: 13, color: '#534AB7', marginBottom: 16, fontWeight: 500 }}>
+                  ✅ Account created! Your email has been filled in — enter your password and sign in.
+                </div>
+              )}
 
-          {/* Solo: sign up link */}
-          {mode === 'solo' && (
-            <div style={{ textAlign: 'center', marginTop: 14, fontSize: 12, color: 'var(--text3)' }}>
-              New to iLab Solo?{' '}
-              <span style={{ color: '#534AB7', fontWeight: 600, cursor: 'pointer' }}
-                onClick={() => alert('Sign-up flow coming soon!')}>Create a free account</span>
-            </div>
-          )}
+              {mode && (
+                <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 18 }}>
+                  <div style={{ flex: 1, height: 1, background: 'var(--border)' }} />
+                  <span style={{ fontSize: 12, color: 'var(--text3)' }}>
+                    {mode === 'team' ? 'Sign in to iLab Team' : 'Sign in to iLab Solo'}
+                  </span>
+                  <div style={{ flex: 1, height: 1, background: 'var(--border)' }} />
+                </div>
+              )}
 
-          {/* Team: forgot password */}
-          {mode === 'team' && (
-            <div style={{ marginTop: 16, padding: '10px 14px', background: 'var(--surface2)', borderRadius: 8, fontSize: 12, color: 'var(--text3)', lineHeight: 1.7 }}>
-              <div style={{ fontWeight: 500, color: 'var(--text2)', marginBottom: 2 }}>Forgot User ID or Password?</div>
-              <div>Contact Research Engineers at ICT</div>
-              <a href="mailto:ictengineers@illinois.edu" style={{ color: 'var(--accent)', textDecoration: 'none', fontWeight: 500 }}>ictengineers@illinois.edu</a>
-            </div>
+              <form onSubmit={handleLogin}>
+                <div className="field" style={{ opacity: mode ? 1 : 0.35, pointerEvents: mode ? 'auto' : 'none', transition: 'opacity 0.2s' }}>
+                  <label>Email address</label>
+                  <input type="text" value={identifier}
+                    onChange={e => { setIdentifier(e.target.value); setError('') }}
+                    placeholder={mode === 'solo' ? 'your@email.com' : 'name or netid@illinois.edu'}
+                    autoComplete="username" disabled={!mode} />
+                </div>
+                <div className="field" style={{ opacity: mode ? 1 : 0.35, pointerEvents: mode ? 'auto' : 'none', transition: 'opacity 0.2s' }}>
+                  <label>Password</label>
+                  <div style={{ position: 'relative' }}>
+                    <input type={showPassword ? 'text' : 'password'} value={password}
+                      onChange={e => { setPassword(e.target.value); setError('') }}
+                      placeholder="••••••••" autoComplete="current-password"
+                      style={{ paddingRight: 44 }} disabled={!mode} />
+                    <button type="button" onClick={() => setShowPassword(s => !s)}
+                      style={{ position: 'absolute', right: 10, top: '50%', transform: 'translateY(-50%)', border: 'none', background: 'none', cursor: 'pointer', fontSize: 16, color: 'var(--text3)', padding: 4 }}>
+                      {showPassword ? '🙈' : '👁️'}
+                    </button>
+                  </div>
+                </div>
+
+                {error && (
+                  <div style={{ fontSize: 13, color: 'var(--accent2)', background: 'var(--accent2-light)', borderRadius: 8, padding: '8px 12px', marginBottom: 16 }}>⚠️ {error}</div>
+                )}
+
+                <button type="submit"
+                  style={{ width: '100%', justifyContent: 'center', fontSize: 15, padding: '12px', background: mode ? accentColor : 'var(--border)', color: mode ? '#fff' : 'var(--text3)', border: 'none', borderRadius: 8, cursor: mode ? 'pointer' : 'not-allowed', fontWeight: 600, transition: 'background 0.2s' }}
+                  disabled={loading || !mode}>
+                  {loading ? 'Signing in…' : mode === 'team' ? 'Sign in to iLab Team' : mode === 'solo' ? 'Sign in to iLab Solo' : 'Select a login type above'}
+                </button>
+              </form>
+
+              {mode === 'solo' && (
+                <div style={{ textAlign: 'center', marginTop: 14, fontSize: 12, color: 'var(--text3)' }}>
+                  New to iLab Solo?{' '}
+                  <span style={{ color: '#534AB7', fontWeight: 600, cursor: 'pointer' }}
+                    onClick={() => { setShowSignUp(true); setError('') }}>Create a free account</span>
+                </div>
+              )}
+
+              {mode === 'team' && (
+                <div style={{ marginTop: 16, padding: '10px 14px', background: 'var(--surface2)', borderRadius: 8, fontSize: 12, color: 'var(--text3)', lineHeight: 1.7 }}>
+                  <div style={{ fontWeight: 500, color: 'var(--text2)', marginBottom: 2 }}>Forgot User ID or Password?</div>
+                  <div>Contact Research Engineers at ICT</div>
+                  <a href="mailto:ictengineers@illinois.edu" style={{ color: 'var(--accent)', textDecoration: 'none', fontWeight: 500 }}>ictengineers@illinois.edu</a>
+                </div>
+              )}
+            </>
           )}
         </div>
 
-        {/* Footer */}
         <div style={{ textAlign: 'center', marginTop: 24, fontSize: 12, color: 'var(--text3)', lineHeight: 1.8 }}>
           <div style={{ fontWeight: 600, fontSize: 14, color: 'var(--text2)' }}>InteleLab (iLab)</div>
           <div>Intelligent Laboratory Platform</div>
