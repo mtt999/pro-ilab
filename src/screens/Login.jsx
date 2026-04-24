@@ -1,0 +1,290 @@
+import { useAppStore } from '../store/useAppStore'
+import { sb } from '../lib/supabase'
+import { useState } from 'react'
+
+// ── Original iLab logo ─────────────────────────────────────────────────────
+function ILabLogo({ size = 120 }) {
+  return (
+    <svg width={size} height={size} viewBox="0 0 512 512" xmlns="http://www.w3.org/2000/svg">
+      <polygon points="256,4 468,126 468,378 256,500 44,378 44,126" fill="#ffb380"/>
+      <polygon points="256,14 458,132 458,372 256,490 54,372 54,132" fill="#ff7f2a"/>
+      <polygon points="256,30 450,140 450,362 256,472 62,362 62,140" fill="#000080"/>
+      <polygon points="256,58 422,152 422,350 256,444 90,350 90,152" fill="none" stroke="#ff6b00" strokeWidth="1.2" opacity="0.25"/>
+      <circle cx="256" cy="30"  r="9" fill="#ff6b00"/>
+      <circle cx="450" cy="140" r="9" fill="#ff6b00"/>
+      <circle cx="450" cy="362" r="9" fill="#ff6b00"/>
+      <circle cx="256" cy="472" r="9" fill="#ff6b00"/>
+      <circle cx="62"  cy="362" r="9" fill="#ff6b00"/>
+      <circle cx="62"  cy="140" r="9" fill="#ff6b00"/>
+      <ellipse cx="256" cy="224" rx="138" ry="44" fill="none" stroke="#ff6b00" strokeWidth="3.5" opacity="0.95"/>
+      <circle cx="394" cy="224" r="16" fill="#ff6b00"/>
+      <ellipse cx="256" cy="224" rx="138" ry="44" fill="none" stroke="#ff9a3c" strokeWidth="3" opacity="0.85" transform="rotate(60 256 224)"/>
+      <circle cx="179.16718" cy="294.86069" r="15" fill="#ff9a3c"/>
+      <ellipse cx="256" cy="224" rx="138" ry="44" fill="none" stroke="#ffba6e" strokeWidth="2.5" opacity="0.75" transform="rotate(-60 256 224)"/>
+      <circle cx="325" cy="105" r="14" fill="#ffba6e"/>
+      <circle cx="256" cy="224" r="38" fill="#ff6b00" opacity="0.10"/>
+      <circle cx="256" cy="224" r="26" fill="#ff6b00" opacity="0.22"/>
+      <circle cx="256" cy="224" r="16" fill="#ff8c00" opacity="0.80"/>
+      <circle cx="256" cy="224" r="9"  fill="#ffb347"/>
+      <text x="258.37772" y="415" textAnchor="middle" fontFamily="Arial, sans-serif" fontSize="92" fontWeight="700">
+        <tspan fontStyle="italic" fill="#ff6b00">i</tspan>
+        <tspan fill="#ffffff" dx="-5">Lab</tspan>
+      </text>
+    </svg>
+  )
+}
+
+// ── Selector card ──────────────────────────────────────────────────────────
+function SelectorCard({ mode, selected, onSelect }) {
+  const isTeam     = mode === 'team'
+  const activeColor = isTeam ? '#1D9E75' : '#534AB7'
+  const activeBg    = isTeam ? '#E1F5EE' : '#EEEDFE'
+  const badgeBg     = isTeam ? '#9FE1CB' : '#CECBF6'
+  const badgeColor  = isTeam ? '#085041' : '#3C3489'
+  const label       = isTeam ? 'iLab Team' : 'iLab Solo'
+  const title       = isTeam ? 'Organization member' : 'Individual researcher'
+  const desc        = isTeam
+    ? 'My organization uses iLab — I have an invite or org credentials'
+    : 'Organize my own research, projects & lab resources independently'
+
+  const teamIcon = (
+    <svg width="32" height="32" viewBox="0 0 32 32" fill="none">
+      <circle cx="10" cy="12" r="4" stroke="#0F6E56" strokeWidth="1.6"/>
+      <circle cx="22" cy="12" r="4" stroke="#0F6E56" strokeWidth="1.6"/>
+      <circle cx="16" cy="10" r="4.5" fill="#9FE1CB" stroke="#0F6E56" strokeWidth="1.6"/>
+      <path d="M4 26c0-3.314 2.686-6 6-6h12c3.314 0 6 2.686 6 6" stroke="#0F6E56" strokeWidth="1.6" strokeLinecap="round"/>
+    </svg>
+  )
+
+  const soloIcon = (
+    <svg width="32" height="32" viewBox="0 0 32 32" fill="none">
+      <circle cx="16" cy="11" r="5" stroke="#534AB7" strokeWidth="1.6"/>
+      <path d="M6 28c0-5.523 4.477-10 10-10s10 4.477 10 10" stroke="#534AB7" strokeWidth="1.6" strokeLinecap="round"/>
+      <path d="M22 7l2 2M24 5v2.5M21.5 5h2.5" stroke="#534AB7" strokeWidth="1.4" strokeLinecap="round"/>
+    </svg>
+  )
+
+  return (
+    <div
+      onClick={() => onSelect(mode)}
+      style={{
+        flex: 1,
+        background: selected ? activeBg : 'var(--surface)',
+        border: selected ? `2px solid ${activeColor}` : '1.5px solid var(--border)',
+        borderRadius: 14,
+        padding: '16px 14px 14px',
+        cursor: 'pointer',
+        textAlign: 'center',
+        position: 'relative',
+        transition: 'border-color 0.15s, background 0.15s',
+        userSelect: 'none',
+      }}
+    >
+      {selected && (
+        <div style={{ position: 'absolute', top: 10, right: 10, width: 18, height: 18, borderRadius: '50%', background: activeColor, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+          <svg width="10" height="10" viewBox="0 0 10 10" fill="none">
+            <path d="M2 5l2.5 2.5L8 3" stroke="white" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
+          </svg>
+        </div>
+      )}
+      <div style={{ width: 56, height: 56, borderRadius: 14, background: isTeam ? '#E1F5EE' : '#EEEDFE', margin: '0 auto 10px', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+        {isTeam ? teamIcon : soloIcon}
+      </div>
+      <div style={{ display: 'inline-block', fontSize: 11, fontWeight: 600, borderRadius: 20, padding: '2px 9px', marginBottom: 7, background: badgeBg, color: badgeColor }}>
+        {label}
+      </div>
+      <div style={{ fontSize: 13, fontWeight: 600, color: 'var(--text)', marginBottom: 5 }}>{title}</div>
+      <div style={{ fontSize: 11.5, color: 'var(--text3)', lineHeight: 1.5 }}>{desc}</div>
+    </div>
+  )
+}
+
+// ── Main Login ─────────────────────────────────────────────────────────────
+export default function Login() {
+  const { setSession, setLoginMode } = useAppStore()
+  const [mode, setMode]             = useState(null)
+  const [identifier, setIdentifier] = useState('')
+  const [password, setPassword]     = useState('')
+  const [error, setError]           = useState('')
+  const [loading, setLoading]       = useState(false)
+  const [showPassword, setShowPassword] = useState(false)
+
+  const accentColor = mode === 'solo' ? '#534AB7' : '#0d47a1'
+
+  function handleModeSelect(m) {
+    setMode(m)
+    setLoginMode(m)
+    setError('')
+  }
+
+  async function handleLogin(e) {
+    e.preventDefault()
+    if (!mode) { setError('Please select how you are using iLab first.'); return }
+    if (!identifier.trim() || !password.trim()) { setError('Please enter your ID and password.'); return }
+    setLoading(true); setError('')
+
+    const identifierLower = identifier.trim().toLowerCase()
+
+    // ── iLab Team login ────────────────────────────────────────────────────
+    if (mode === 'team') {
+      const { data: adminSettings } = await sb.from('settings').select('value').eq('key', 'admin_email').maybeSingle()
+      const adminEmail = adminSettings?.value || 'motlagh999@gmail.com'
+      const { data: adminPass } = await sb.from('settings').select('value').eq('key', 'admin_password').maybeSingle()
+      if (identifierLower === adminEmail.toLowerCase() && password === (adminPass?.value || 'Motlagh@2026')) {
+        setSession({ role: 'admin', username: 'Admin', userId: null, adminLevel: 3, loginMode: 'team' })
+        setLoading(false); return
+      }
+      let user = null
+      const { data: byEmail } = await sb.from('users').select('*').eq('is_active', true).ilike('email', identifierLower)
+      if (byEmail?.length) user = byEmail[0]
+      if (!user) {
+        const { data: byName } = await sb.from('users').select('*').eq('is_active', true).ilike('name', identifier.trim())
+        if (byName?.length) user = byName[0]
+      }
+      if (!user) { setError('No account found. Contact your organization admin.'); setLoading(false); return }
+      if (!user.password) { setError('No password set. Contact your admin.'); setLoading(false); return }
+      if (user.password !== password) { setError('Incorrect password.'); setLoading(false); return }
+      const adminLevel = user.admin_level || 0
+      const role = user.role === 'admin' || adminLevel >= 1 ? 'admin' : user.role
+      setSession({ role, username: user.name, userId: user.id, email: user.email, adminLevel, photoUrl: user.photo_url, avatar: user.avatar, loginMode: 'team' })
+      setLoading(false)
+      return
+    }
+
+    // ── iLab Solo login ────────────────────────────────────────────────────
+    if (mode === 'solo') {
+      const { data: soloUser, error: soloErr } = await sb
+        .from('solo_users')
+        .select('*')
+        .eq('is_active', true)
+        .ilike('email', identifierLower)
+        .maybeSingle()
+      if (soloErr || !soloUser) { setError('No Solo account found. Please sign up first.'); setLoading(false); return }
+      if (soloUser.password !== password) { setError('Incorrect password.'); setLoading(false); return }
+      setSession({
+        role: 'solo',
+        username: soloUser.name,
+        userId: soloUser.id,
+        email: soloUser.email,
+        photoUrl: soloUser.photo_url,
+        avatar: soloUser.avatar,
+        activeModules: soloUser.active_modules || [],
+        loginMode: 'solo',
+      })
+      setLoading(false)
+    }
+  }
+
+  return (
+    <div style={{ minHeight: '100vh', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', background: 'var(--bg)', padding: 20 }}>
+      <div style={{ width: '100%', maxWidth: 420 }}>
+
+        {/* Logo */}
+        <div style={{ textAlign: 'center', marginBottom: 28 }}>
+          <ILabLogo size={120} />
+        </div>
+
+        <div className="card" style={{ padding: '28px 28px 24px' }}>
+
+          {/* Step 1: Mode selector */}
+          <div style={{ fontSize: 12, fontWeight: 600, color: 'var(--text3)', textTransform: 'uppercase', letterSpacing: '0.07em', marginBottom: 10, textAlign: 'center' }}>
+            How are you using iLab?
+          </div>
+          <div style={{ display: 'flex', gap: 12, marginBottom: 20 }}>
+            <SelectorCard mode="team" selected={mode === 'team'} onSelect={handleModeSelect} />
+            <SelectorCard mode="solo" selected={mode === 'solo'} onSelect={handleModeSelect} />
+          </div>
+
+          {/* Org note (Team only) */}
+          {mode === 'team' && (
+            <div style={{ background: '#E1F5EE', border: '0.5px solid #9FE1CB', borderRadius: 8, padding: '8px 12px', fontSize: 12, color: '#085041', marginBottom: 16, lineHeight: 1.5 }}>
+              Access is managed by your organization admin. Contact them if you need an account.
+            </div>
+          )}
+
+          {/* Divider — only shown after selection */}
+          {mode && (
+            <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 18 }}>
+              <div style={{ flex: 1, height: 1, background: 'var(--border)' }} />
+              <span style={{ fontSize: 12, color: 'var(--text3)' }}>
+                {mode === 'team' ? 'Sign in to iLab Team' : 'Sign in to iLab Solo'}
+              </span>
+              <div style={{ flex: 1, height: 1, background: 'var(--border)' }} />
+            </div>
+          )}
+
+          {/* Login form — fields dimmed until mode selected */}
+          <form onSubmit={handleLogin}>
+            <div className="field" style={{ opacity: mode ? 1 : 0.35, pointerEvents: mode ? 'auto' : 'none', transition: 'opacity 0.2s' }}>
+              <label>Email address</label>
+              <input
+                type="text"
+                value={identifier}
+                onChange={e => { setIdentifier(e.target.value); setError('') }}
+                placeholder={mode === 'solo' ? 'your@email.com' : 'name or netid@illinois.edu'}
+                autoComplete="username"
+                disabled={!mode}
+              />
+            </div>
+            <div className="field" style={{ opacity: mode ? 1 : 0.35, pointerEvents: mode ? 'auto' : 'none', transition: 'opacity 0.2s' }}>
+              <label>Password</label>
+              <div style={{ position: 'relative' }}>
+                <input
+                  type={showPassword ? 'text' : 'password'}
+                  value={password}
+                  onChange={e => { setPassword(e.target.value); setError('') }}
+                  placeholder="••••••••"
+                  autoComplete="current-password"
+                  style={{ paddingRight: 44 }}
+                  disabled={!mode}
+                />
+                <button type="button" onClick={() => setShowPassword(s => !s)}
+                  style={{ position: 'absolute', right: 10, top: '50%', transform: 'translateY(-50%)', border: 'none', background: 'none', cursor: 'pointer', fontSize: 16, color: 'var(--text3)', padding: 4 }}>
+                  {showPassword ? '🙈' : '👁️'}
+                </button>
+              </div>
+            </div>
+
+            {error && (
+              <div style={{ fontSize: 13, color: 'var(--accent2)', background: 'var(--accent2-light)', borderRadius: 8, padding: '8px 12px', marginBottom: 16 }}>⚠️ {error}</div>
+            )}
+
+            <button
+              type="submit"
+              style={{ width: '100%', justifyContent: 'center', fontSize: 15, padding: '12px', background: mode ? accentColor : 'var(--border)', color: mode ? '#fff' : 'var(--text3)', border: 'none', borderRadius: 8, cursor: mode ? 'pointer' : 'not-allowed', fontWeight: 600, transition: 'background 0.2s' }}
+              disabled={loading || !mode}>
+              {loading ? 'Signing in…' : mode === 'team' ? 'Sign in to iLab Team' : mode === 'solo' ? 'Sign in to iLab Solo' : 'Select a login type above'}
+            </button>
+          </form>
+
+          {/* Solo: sign up link */}
+          {mode === 'solo' && (
+            <div style={{ textAlign: 'center', marginTop: 14, fontSize: 12, color: 'var(--text3)' }}>
+              New to iLab Solo?{' '}
+              <span style={{ color: '#534AB7', fontWeight: 600, cursor: 'pointer' }}
+                onClick={() => alert('Sign-up flow coming soon!')}>Create a free account</span>
+            </div>
+          )}
+
+          {/* Team: forgot password */}
+          {mode === 'team' && (
+            <div style={{ marginTop: 16, padding: '10px 14px', background: 'var(--surface2)', borderRadius: 8, fontSize: 12, color: 'var(--text3)', lineHeight: 1.7 }}>
+              <div style={{ fontWeight: 500, color: 'var(--text2)', marginBottom: 2 }}>Forgot User ID or Password?</div>
+              <div>Contact Research Engineers at ICT</div>
+              <a href="mailto:ictengineers@illinois.edu" style={{ color: 'var(--accent)', textDecoration: 'none', fontWeight: 500 }}>ictengineers@illinois.edu</a>
+            </div>
+          )}
+        </div>
+
+        {/* Footer */}
+        <div style={{ textAlign: 'center', marginTop: 24, fontSize: 12, color: 'var(--text3)', lineHeight: 1.8 }}>
+          <div style={{ fontWeight: 600, fontSize: 14, color: 'var(--text2)' }}>InteleLab (iLab)</div>
+          <div>Intelligent Laboratory Platform</div>
+          <div style={{ fontWeight: 500, color: 'var(--text2)', marginTop: 4 }}>App developed by Mohsen Motlagh</div>
+          <div>© {new Date().getFullYear()} All rights reserved</div>
+        </div>
+
+      </div>
+    </div>
+  )
+}
