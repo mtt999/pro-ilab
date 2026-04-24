@@ -2,6 +2,7 @@ import HelpPanel from '../components/HelpPanel'
 import { useAppStore } from '../store/useAppStore'
 import { sb } from '../lib/supabase'
 import { useState, useEffect, useRef } from 'react'
+import DashboardIconPicker, { ALL_MODULES_META, PINNED_MODULES } from '../components/DashboardIconPicker'
 
 const PROJECT_GROUPS = ['Material', 'Sustainability', 'GPR', 'Mechanic', 'Other']
 const DEGREES = ['MS', 'PhD', 'BS', 'Other']
@@ -17,8 +18,154 @@ const sEmail      = s => s?.phone  || ''
 const sSupervisor = s => s?.degree || s?.supervisor || ''
 
 // ══════════════════════════════════════════════════════════════
+// DASHBOARD ICONS MANAGER — works for all roles
+// ══════════════════════════════════════════════════════════════
+function DashboardIconsPanel({ session }) {
+  const { toast } = useAppStore()
+  const isSolo = session?.loginMode === 'solo'
+  const loginMode = session?.loginMode || 'team'
+
+  const roleKey = loginMode === 'solo' ? 'solo' : 'team'
+  const studentAllowed = ['projects','training','booking','equipmenthub','mileage','labsafety','remessages','profile']
+  const available = ALL_MODULES_META.filter(m => {
+    if (!m.roles.includes(roleKey)) return false
+    if (session?.role === 'student' && !studentAllowed.includes(m.key)) return false
+    return true
+  })
+
+  const [selected, setSelected] = useState(null) // null = loading
+  const [saving, setSaving] = useState(false)
+
+  useEffect(() => { load() }, [session?.userId])
+
+  async function load() {
+    if (!session?.userId) return
+    try {
+      if (isSolo) {
+        const { data } = await sb.from('solo_users').select('active_modules').eq('id', session.userId).maybeSingle()
+        setSelected(new Set(data?.active_modules?.length ? data.active_modules : available.map(m => m.key)))
+      } else {
+        const { data } = await sb.from('user_dashboard_prefs').select('active_modules').eq('user_id', session.userId).maybeSingle()
+        setSelected(new Set(data?.active_modules?.length ? data.active_modules : available.map(m => m.key)))
+      }
+    } catch (e) {
+      setSelected(new Set(available.map(m => m.key)))
+    }
+  }
+
+  function toggle(key) {
+    if (PINNED_MODULES.includes(key)) return
+    setSelected(prev => {
+      const next = new Set(prev)
+      if (next.has(key)) next.delete(key)
+      else next.add(key)
+      return next
+    })
+  }
+
+  async function save() {
+    if (!selected) return
+    setSaving(true)
+    const modules = Array.from(selected)
+    try {
+      if (isSolo) {
+        await sb.from('solo_users').update({ active_modules: modules, has_set_dashboard: true }).eq('id', session.userId)
+      } else {
+        await sb.from('user_dashboard_prefs').upsert({ user_id: session.userId, active_modules: modules, has_set_dashboard: true })
+      }
+      toast('Dashboard icons saved ✓')
+    } catch (e) {
+      toast('Error saving preferences.')
+    }
+    setSaving(false)
+  }
+
+  if (selected === null) return (
+    <div style={{ textAlign: 'center', padding: 40 }}><div className="spinner" style={{ margin: '0 auto' }} /></div>
+  )
+
+  const selectedCount = selected.size
+
+  return (
+    <div>
+      <div className="card" style={{ marginBottom: 20 }}>
+        <div style={{ fontWeight: 600, fontSize: 15, marginBottom: 4 }}>🎛️ Dashboard Icons</div>
+        <div style={{ fontSize: 13, color: 'var(--text2)', lineHeight: 1.6 }}>
+          Choose which shortcuts appear on your dashboard. Changes take effect immediately after saving.
+        </div>
+      </div>
+
+      {/* Progress + select all/none */}
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 14 }}>
+        <div style={{ fontSize: 13, color: 'var(--text2)' }}>
+          <span style={{ fontWeight: 600, color: 'var(--text)' }}>{selectedCount}</span> of {available.length} selected
+        </div>
+        <div style={{ display: 'flex', gap: 12 }}>
+          <button onClick={() => setSelected(new Set(available.map(m => m.key)))}
+            style={{ fontSize: 12, border: 'none', background: 'none', cursor: 'pointer', color: 'var(--accent)', fontWeight: 600 }}>Select all</button>
+          <button onClick={() => setSelected(new Set(PINNED_MODULES))}
+            style={{ fontSize: 12, border: 'none', background: 'none', cursor: 'pointer', color: 'var(--text3)', fontWeight: 500 }}>Clear</button>
+        </div>
+      </div>
+
+      {/* Progress bar */}
+      <div style={{ height: 3, background: 'var(--surface2)', borderRadius: 99, marginBottom: 20, overflow: 'hidden' }}>
+        <div style={{ height: '100%', width: `${(selectedCount / available.length) * 100}%`, background: loginMode === 'solo' ? '#534AB7' : 'var(--accent)', borderRadius: 99, transition: 'width 0.3s' }} />
+      </div>
+
+      {/* Module grid */}
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(175px, 1fr))', gap: 10, marginBottom: 24 }}>
+        {available.map(m => {
+          const pinned = PINNED_MODULES.includes(m.key)
+          const sel = selected.has(m.key)
+          return (
+            <div key={m.key}
+              onClick={() => !pinned && toggle(m.key)}
+              style={{
+                borderRadius: 12,
+                border: sel ? `2px solid ${m.color}` : '2px solid var(--border)',
+                background: sel ? `${m.color}12` : 'var(--surface)',
+                padding: '14px 14px 12px',
+                cursor: pinned ? 'default' : 'pointer',
+                position: 'relative',
+                transition: 'all 0.15s',
+                opacity: pinned ? 0.7 : 1,
+                userSelect: 'none',
+              }}
+            >
+              {/* Check badge */}
+              <div style={{
+                position: 'absolute', top: 9, right: 9,
+                width: 20, height: 20, borderRadius: '50%',
+                background: sel ? m.color : 'var(--surface2)',
+                border: `2px solid ${sel ? m.color : 'var(--border)'}`,
+                display: 'flex', alignItems: 'center', justifyContent: 'center',
+                transition: 'all 0.15s',
+              }}>
+                {sel && (
+                  <svg width="10" height="10" viewBox="0 0 10 10" fill="none">
+                    <path d="M2 5l2.5 2.5L8 3" stroke="white" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" />
+                  </svg>
+                )}
+              </div>
+              <div style={{ fontSize: 26, marginBottom: 7 }}>{m.icon}</div>
+              <div style={{ fontSize: 13, fontWeight: 600, color: sel ? m.color : 'var(--text)', marginBottom: 2, paddingRight: 22 }}>{m.label}</div>
+              <div style={{ fontSize: 11, color: 'var(--text3)', lineHeight: 1.4 }}>{m.sub}</div>
+              {pinned && <div style={{ marginTop: 6, fontSize: 10, color: m.color, fontWeight: 600 }}>Always visible</div>}
+            </div>
+          )
+        })}
+      </div>
+
+      <button className="btn btn-primary" onClick={save} disabled={saving || !selected}>
+        {saving ? 'Saving…' : 'Save dashboard icons'}
+      </button>
+    </div>
+  )
+}
+
+// ══════════════════════════════════════════════════════════════
 // NOTIFICATION PREFERENCES — shared by all roles
-// Events are filtered by role
 // ══════════════════════════════════════════════════════════════
 function NotificationPrefsPanel({ userId, role }) {
   const [prefs, setPrefs] = useState(null)
@@ -26,7 +173,6 @@ function NotificationPrefsPanel({ userId, role }) {
   const [saving, setSaving] = useState(false)
   const { toast } = useAppStore()
 
-  // Define events per role
   const SECTIONS = [
     {
       title: '📅 Equipment Booking',
@@ -74,7 +220,6 @@ function NotificationPrefsPanel({ userId, role }) {
   async function load() {
     setLoading(true)
     const { data } = await sb.from('notification_prefs').select('*').eq('user_id', userId).maybeSingle()
-    // Build defaults: all in-app ON, all email OFF
     const defaults = {}
     SECTIONS.forEach(sec => sec.events.forEach(ev => {
       defaults[ev.key] = true
@@ -99,10 +244,8 @@ function NotificationPrefsPanel({ userId, role }) {
       <div style={{ fontSize: 13, color: 'var(--text2)', marginBottom: 20, lineHeight: 1.6 }}>
         Choose how you want to be notified for each event. <strong>In-app</strong> shows a bell 🔔 notification inside iLab. <strong>Email</strong> sends to your registered email address.
       </div>
-
       {SECTIONS.map(sec => (
         <div key={sec.title} style={{ background: 'var(--surface)', border: '1px solid var(--border)', borderRadius: 12, overflow: 'hidden', marginBottom: 20 }}>
-          {/* Section header */}
           <div style={{ padding: '12px 16px', background: 'var(--surface2)', borderBottom: '1px solid var(--border)', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
             <div>
               <div style={{ fontWeight: 600, fontSize: 14 }}>{sec.title}</div>
@@ -113,28 +256,21 @@ function NotificationPrefsPanel({ userId, role }) {
               <span style={{ width: 50, textAlign: 'center' }}>Email 📧</span>
             </div>
           </div>
-
-          {/* Event rows */}
           {sec.events.map((ev, i) => (
             <div key={ev.key} style={{ display: 'flex', alignItems: 'center', padding: '12px 16px', borderBottom: i < sec.events.length - 1 ? '1px solid var(--surface2)' : 'none' }}>
               <div style={{ flex: 1, fontSize: 13, fontWeight: 500 }}>{ev.label}</div>
               <div style={{ display: 'flex', gap: 24, flexShrink: 0 }}>
                 <div style={{ width: 50, textAlign: 'center' }}>
-                  <input type="checkbox" checked={!!prefs[ev.key]}
-                    onChange={e => setPrefs(p => ({ ...p, [ev.key]: e.target.checked }))}
-                    style={{ width: 'auto', cursor: 'pointer', transform: 'scale(1.3)' }} />
+                  <input type="checkbox" checked={!!prefs[ev.key]} onChange={e => setPrefs(p => ({ ...p, [ev.key]: e.target.checked }))} style={{ width: 'auto', cursor: 'pointer', transform: 'scale(1.3)' }} />
                 </div>
                 <div style={{ width: 50, textAlign: 'center' }}>
-                  <input type="checkbox" checked={!!prefs[`email_${ev.key}`]}
-                    onChange={e => setPrefs(p => ({ ...p, [`email_${ev.key}`]: e.target.checked }))}
-                    style={{ width: 'auto', cursor: 'pointer', transform: 'scale(1.3)' }} />
+                  <input type="checkbox" checked={!!prefs[`email_${ev.key}`]} onChange={e => setPrefs(p => ({ ...p, [`email_${ev.key}`]: e.target.checked }))} style={{ width: 'auto', cursor: 'pointer', transform: 'scale(1.3)' }} />
                 </div>
               </div>
             </div>
           ))}
         </div>
       ))}
-
       <div style={{ fontSize: 11, color: 'var(--text3)', marginBottom: 12 }}>Email notifications require your email address to be set in your profile. Contact your admin to enable email delivery.</div>
       <button className="btn btn-primary" onClick={save} disabled={saving}>{saving ? 'Saving…' : 'Save notification preferences'}</button>
     </div>
@@ -159,6 +295,7 @@ function AdminProfile() {
           { key: 'students', label: '👥 Students' },
           { key: 'staff',    label: '👨‍💼 Staff & Access' },
           { key: 'icons',    label: '🖼️ Icon Images' },
+          { key: 'dashboard',label: '🎛️ Dashboard Icons' },
           { key: 'notifs',   label: '🔔 Notifications' },
         ].map(t => (
           <button key={t.key} onClick={() => setAdminTab(t.key)}
@@ -167,11 +304,12 @@ function AdminProfile() {
           </button>
         ))}
       </div>
-      {adminTab === 'admin'    && <AdminSettings session={session} toast={toast} />}
-      {adminTab === 'students' && <StudentsPanel toast={toast} />}
-      {adminTab === 'staff'    && <StaffPanel toast={toast} />}
-      {adminTab === 'icons'    && <IconImageManager toast={toast} />}
-      {adminTab === 'notifs'   && <NotificationPrefsPanel userId={session?.userId} role="admin" />}
+      {adminTab === 'admin'     && <AdminSettings session={session} toast={toast} />}
+      {adminTab === 'students'  && <StudentsPanel toast={toast} />}
+      {adminTab === 'staff'     && <StaffPanel toast={toast} />}
+      {adminTab === 'icons'     && <IconImageManager toast={toast} />}
+      {adminTab === 'dashboard' && <DashboardIconsPanel session={session} />}
+      {adminTab === 'notifs'    && <NotificationPrefsPanel userId={session?.userId} role="admin" />}
     </div>
   )
 }
@@ -505,7 +643,7 @@ function SupervisorSelect({ value, onChange }) {
 }
 
 // ══════════════════════════════════════════════════════════════
-// STAFF PROFILE — own info + manage students/staff + notifications
+// STAFF PROFILE
 // ══════════════════════════════════════════════════════════════
 function StaffProfile({ session }) {
   const { toast } = useAppStore()
@@ -518,10 +656,11 @@ function StaffProfile({ session }) {
       </div>
       <div style={{ display: 'flex', borderBottom: '1px solid var(--border)', marginBottom: 24, overflowX: 'auto' }}>
         {[
-          { key: 'info',     label: '👤 My Profile' },
-          { key: 'students', label: '👥 Students' },
-          { key: 'staff',    label: '👨‍💼 Staff Members' },
-          { key: 'notifs',   label: '🔔 Notifications' },
+          { key: 'info',      label: '👤 My Profile' },
+          { key: 'students',  label: '👥 Students' },
+          { key: 'staff',     label: '👨‍💼 Staff Members' },
+          { key: 'dashboard', label: '🎛️ Dashboard Icons' },
+          { key: 'notifs',    label: '🔔 Notifications' },
         ].map(t => (
           <button key={t.key} onClick={() => setActiveTab(t.key)}
             style={{ padding: '10px 24px', border: 'none', background: 'transparent', fontFamily: 'var(--sans)', fontSize: 14, fontWeight: 500, cursor: 'pointer', color: activeTab === t.key ? 'var(--accent)' : 'var(--text2)', borderBottom: `2px solid ${activeTab === t.key ? 'var(--accent)' : 'transparent'}`, transition: 'all 0.15s', whiteSpace: 'nowrap' }}>
@@ -529,10 +668,11 @@ function StaffProfile({ session }) {
           </button>
         ))}
       </div>
-      {activeTab === 'info'     && <UserProfileForm session={session} toast={toast} />}
-      {activeTab === 'students' && <StudentsPanel toast={toast} />}
-      {activeTab === 'staff'    && <StaffListPanel toast={toast} />}
-      {activeTab === 'notifs'   && <NotificationPrefsPanel userId={session?.userId} role="user" />}
+      {activeTab === 'info'      && <UserProfileForm session={session} toast={toast} />}
+      {activeTab === 'students'  && <StudentsPanel toast={toast} />}
+      {activeTab === 'staff'     && <StaffListPanel toast={toast} />}
+      {activeTab === 'dashboard' && <DashboardIconsPanel session={session} />}
+      {activeTab === 'notifs'    && <NotificationPrefsPanel userId={session?.userId} role="user" />}
     </div>
   )
 }
@@ -717,7 +857,7 @@ function UserProfileForm({ session, toast }) {
 }
 
 // ══════════════════════════════════════════════════════════════
-// STUDENT PROFILE — own info + notifications tab
+// STUDENT PROFILE
 // ══════════════════════════════════════════════════════════════
 function UserProfile({ session }) {
   const { toast } = useAppStore()
@@ -730,8 +870,9 @@ function UserProfile({ session }) {
       </div>
       <div style={{ display: 'flex', borderBottom: '1px solid var(--border)', marginBottom: 24, overflowX: 'auto' }}>
         {[
-          { key: 'info',   label: '👤 My Info' },
-          { key: 'notifs', label: '🔔 Notifications' },
+          { key: 'info',      label: '👤 My Info' },
+          { key: 'dashboard', label: '🎛️ Dashboard Icons' },
+          { key: 'notifs',    label: '🔔 Notifications' },
         ].map(t => (
           <button key={t.key} onClick={() => setActiveTab(t.key)}
             style={{ padding: '10px 24px', border: 'none', background: 'transparent', fontFamily: 'var(--sans)', fontSize: 14, fontWeight: 500, cursor: 'pointer', color: activeTab === t.key ? 'var(--accent)' : 'var(--text2)', borderBottom: `2px solid ${activeTab === t.key ? 'var(--accent)' : 'transparent'}`, transition: 'all 0.15s', whiteSpace: 'nowrap' }}>
@@ -739,8 +880,9 @@ function UserProfile({ session }) {
           </button>
         ))}
       </div>
-      {activeTab === 'info'   && <UserProfileForm session={session} toast={toast} />}
-      {activeTab === 'notifs' && <NotificationPrefsPanel userId={session?.userId} role="student" />}
+      {activeTab === 'info'      && <UserProfileForm session={session} toast={toast} />}
+      {activeTab === 'dashboard' && <DashboardIconsPanel session={session} />}
+      {activeTab === 'notifs'    && <NotificationPrefsPanel userId={session?.userId} role="student" />}
     </div>
   )
 }

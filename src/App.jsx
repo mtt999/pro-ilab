@@ -18,15 +18,16 @@ import EquipmentHub from './screens/EquipmentHub'
 import BookingEquipment from './screens/BookingEquipment'
 import PM from './screens/PM'
 import Toast from './components/Toast'
+import DashboardIconPicker from './components/DashboardIconPicker'
 
 export default function App() {
   const { session, screen, refreshCache, setScreen } = useAppStore()
   const [loading, setLoading] = useState(true)
   const [userAccess, setUserAccess] = useState(null)
+  // null = not checked yet, false = not needed, true = show picker
+  const [showIconPicker, setShowIconPicker] = useState(null)
 
   useEffect(() => {
-    // Solo users don't need the team cache (rooms, supplies, settings)
-    // Skip it to make the app load faster for them
     const loginMode = localStorage.getItem('ilab_login_mode')
     if (loginMode === 'solo') {
       setLoading(false)
@@ -36,13 +37,40 @@ export default function App() {
   }, [])
 
   useEffect(() => {
-    // Save login mode to localStorage so we know on next load
     if (session?.loginMode) {
       localStorage.setItem('ilab_login_mode', session.loginMode)
     } else if (!session) {
       localStorage.removeItem('ilab_login_mode')
+      setShowIconPicker(null)
     }
   }, [session])
+
+  // Check if this is a first login (no dashboard prefs saved yet)
+  useEffect(() => {
+    if (!session?.userId) { setShowIconPicker(false); return }
+    checkFirstLogin()
+  }, [session?.userId])
+
+  async function checkFirstLogin() {
+    try {
+      const isSolo = session?.loginMode === 'solo'
+      if (isSolo) {
+        const { data } = await sb.from('solo_users')
+          .select('has_set_dashboard')
+          .eq('id', session.userId)
+          .maybeSingle()
+        setShowIconPicker(!data?.has_set_dashboard)
+      } else {
+        const { data } = await sb.from('user_dashboard_prefs')
+          .select('has_set_dashboard')
+          .eq('user_id', session.userId)
+          .maybeSingle()
+        setShowIconPicker(!data?.has_set_dashboard)
+      }
+    } catch (e) {
+      setShowIconPicker(false)
+    }
+  }
 
   useEffect(() => {
     if (session?.userId && (session?.role === 'user' || session?.role === 'admin')) {
@@ -101,6 +129,16 @@ export default function App() {
     <>
       <Layout>{screens[screen] || <Dashboard />}</Layout>
       <Toast />
+      {/* First-login dashboard icon picker — shown until user saves their prefs */}
+      {showIconPicker === true && session?.userId && (
+        <DashboardIconPicker
+          session={session}
+          loginMode={session?.loginMode || 'team'}
+          onDone={(savedModules) => {
+            setShowIconPicker(false)
+          }}
+        />
+      )}
     </>
   )
 }
