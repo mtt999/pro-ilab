@@ -1,4 +1,505 @@
-// Placeholder — large screen files will be migrated in the next session
+import { useState, useEffect } from 'react'
+import { sb } from '../lib/supabase'
+import { useAppStore } from '../store/useAppStore'
+
+// All modules — PM only shown to admin/user (staff)
+function getModules(role) {
+  const all = [
+    { key: 'supply',      screen: 'home',        label: 'Supply Inventory',          sub: 'Weekly inspection & export',       icon: '📦', bg: '#e8f2ee', color: '#2a6049' },
+    { key: 'projects',    screen: 'projects',    label: 'Project Inventory',         sub: 'Materials, storage & database',    icon: '🧪', bg: '#f3eeff', color: '#7c4dbd' },
+    { key: 'training',    screen: 'training',    label: 'Training Records',          sub: 'Certs, equipment & alarm',         icon: '🎓', bg: '#e0f2fe', color: '#0369a1' },
+    { key: 'equipment',   screen: 'equipment',   label: 'Equipment Inventory',       sub: 'Lab equipment tracking',           icon: '🔧', bg: '#fef3c7', color: '#92400e' },
+    { key: 'equipmenthub',screen: 'equipmenthub',label: 'Equipment',                 sub: 'Info, SOP & standards',            icon: '📚', bg: '#e8f2ee', color: '#1e4d39' },
+    { key: 'booking',     screen: 'booking',     label: 'Booking Equipment',         sub: 'Reserve lab equipment',            icon: '📅', bg: '#e0f2fe', color: '#0369a1' },
+    { key: 'mileage',     screen: null,          label: 'Mileage Form',              sub: 'Submit mileage reimbursement',     icon: '🚗', bg: '#fdf0ed', color: '#c84b2f', external: true },
+    { key: 'labsafety',   screen: null,          label: 'Lab Safety',                sub: 'Safety training & certification',  icon: '🦺', bg: '#fef3c7', color: '#92400e', external: true },
+    { key: 'remessages',  screen: 'remessages',  label: 'Contact Lab Manager (REs)', sub: 'Notes, ideas & issue reports',    icon: '💬', bg: '#e8f2ee', color: '#2a6049' },
+    { key: 'profile',     screen: 'profile',     label: 'Profile',                   sub: 'Your info & settings',             icon: '👤', bg: '#f3eeff', color: '#7c4dbd' },
+  ]
+  // PM module — only for admin and staff (user role)
+  const pmModule = { key: 'pm', screen: 'pm', label: 'Project Management', sub: 'Tasks, meetings & team chat', icon: '📋', bg: '#fff3e0', color: '#ff6b00' }
+
+  if (role === 'admin') return [...all.filter(m => !m.external), pmModule]
+  if (role === 'user')  return [...all, pmModule]
+  if (role === 'student') return all.filter(m => ['projects','training','profile','equipmenthub','booking','mileage','labsafety','remessages'].includes(m.key))
+  return all
+}
+
+// ALL modules visible to students but locked — for blurred card display
+function getAllModulesForStudent() {
+  return [
+    { key: 'supply',      screen: 'home',        label: 'Supply Inventory',          sub: 'Weekly inspection & export',       icon: '📦', bg: '#e8f2ee', color: '#2a6049' },
+    { key: 'projects',    screen: 'projects',    label: 'Project Inventory',         sub: 'Materials, storage & database',    icon: '🧪', bg: '#f3eeff', color: '#7c4dbd' },
+    { key: 'training',    screen: 'training',    label: 'Training Records',          sub: 'Certs, equipment & alarm',         icon: '🎓', bg: '#e0f2fe', color: '#0369a1' },
+    { key: 'equipment',   screen: 'equipment',   label: 'Equipment Inventory',       sub: 'Lab equipment tracking',           icon: '🔧', bg: '#fef3c7', color: '#92400e', locked: true },
+    { key: 'equipmenthub',screen: 'equipmenthub',label: 'Equipment',                 sub: 'Info, SOP & standards',            icon: '📚', bg: '#e8f2ee', color: '#1e4d39' },
+    { key: 'booking',     screen: 'booking',     label: 'Booking Equipment',         sub: 'Reserve lab equipment',            icon: '📅', bg: '#e0f2fe', color: '#0369a1' },
+    { key: 'mileage',     screen: null,          label: 'Mileage Form',              sub: 'Submit mileage reimbursement',     icon: '🚗', bg: '#fdf0ed', color: '#c84b2f', external: true },
+    { key: 'labsafety',   screen: null,          label: 'Lab Safety',                sub: 'Safety training & certification',  icon: '🦺', bg: '#fef3c7', color: '#92400e', external: true },
+    { key: 'remessages',  screen: 'remessages',  label: 'Contact Lab Manager (REs)', sub: 'Notes, ideas & issue reports',    icon: '💬', bg: '#e8f2ee', color: '#2a6049' },
+    { key: 'pm',          screen: 'pm',          label: 'Project Management',        sub: 'Tasks, meetings & team chat',      icon: '📋', bg: '#fff3e0', color: '#ff6b00', locked: true },
+    { key: 'profile',     screen: 'profile',     label: 'Profile',                   sub: 'Your info & settings',             icon: '👤', bg: '#f3eeff', color: '#7c4dbd' },
+    { key: 'supply_admin',screen: 'home',        label: 'Admin Tools',               sub: 'Rooms, supplies & settings',       icon: '⚙️', bg: '#f5f5f5', color: '#555', locked: true },
+  ]
+}
+
+function ExternalLinkModal({ url, onConfirm, onCancel }) {
+  return (
+    <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.4)', zIndex: 300, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 20 }}>
+      <div style={{ background: 'var(--surface)', borderRadius: 'var(--radius-lg)', padding: 28, maxWidth: 380, width: '100%', border: '1px solid var(--border)' }}>
+        <div style={{ fontSize: 36, textAlign: 'center', marginBottom: 12 }}>🔗</div>
+        <div style={{ fontWeight: 700, fontSize: 18, marginBottom: 8, textAlign: 'center' }}>Leaving InteleLab</div>
+        <div style={{ fontSize: 14, color: 'var(--text2)', lineHeight: 1.7, marginBottom: 8, textAlign: 'center' }}>You are being redirected to an external website:</div>
+        <div style={{ background: 'var(--surface2)', borderRadius: 8, padding: '8px 14px', marginBottom: 20, fontSize: 13, color: 'var(--text3)', fontFamily: 'var(--mono)', wordBreak: 'break-all', textAlign: 'center' }}>{url}</div>
+        <div style={{ display: 'flex', gap: 10 }}>
+          <button className="btn" style={{ flex: 1 }} onClick={onCancel}>Cancel</button>
+          <button className="btn btn-primary" style={{ flex: 1 }} onClick={onConfirm}>Continue →</button>
+        </div>
+      </div>
+    </div>
+  )
+}
+
+// Normal clickable card
+function ModuleCard({ m, onClick, imgUrl, isAdminManage }) {
+  return (
+    <div onClick={onClick}
+      style={{ borderRadius: 'var(--radius-lg)', overflow: 'hidden', cursor: 'pointer', border: isAdminManage ? '1px dashed var(--border)' : '1px solid var(--border)', transition: 'all 0.15s', position: 'relative', height: 160 }}
+      onMouseEnter={e => { e.currentTarget.style.transform = 'translateY(-2px)'; e.currentTarget.style.boxShadow = '0 4px 16px rgba(0,0,0,0.12)' }}
+      onMouseLeave={e => { e.currentTarget.style.transform = 'translateY(0)'; e.currentTarget.style.boxShadow = 'none' }}>
+      {imgUrl ? <img src={imgUrl} alt="" style={{ position: 'absolute', inset: 0, width: '100%', height: '100%', objectFit: 'cover' }} /> : <div style={{ position: 'absolute', inset: 0, background: m.bg }} />}
+      <div style={{ position: 'absolute', inset: 0, background: imgUrl ? 'linear-gradient(to top, rgba(0,0,0,0.72) 40%, rgba(0,0,0,0.1) 100%)' : 'linear-gradient(to top, rgba(0,0,0,0.15) 0%, transparent 100%)' }} />
+      {m.external && <div style={{ position: 'absolute', top: 10, right: 10, background: 'rgba(0,0,0,0.4)', color: '#fff', fontSize: 10, borderRadius: 4, padding: '2px 6px' }}>↗ External</div>}
+      {isAdminManage && <div style={{ position: 'absolute', top: 10, right: 10, background: m.color, color: '#fff', fontSize: 10, borderRadius: 4, padding: '2px 8px', fontWeight: 600 }}>⚙ Edit</div>}
+      <div style={{ position: 'absolute', bottom: 0, left: 0, right: 0, padding: '12px 14px' }}>
+        {!imgUrl && <div style={{ fontSize: 28, marginBottom: 6 }}>{m.icon}</div>}
+        <div style={{ fontWeight: 700, fontSize: 14, color: imgUrl ? '#fff' : m.color, textShadow: imgUrl ? '0 1px 3px rgba(0,0,0,0.5)' : 'none', marginBottom: 2 }}>{m.label}</div>
+        <div style={{ fontSize: 11, color: imgUrl ? 'rgba(255,255,255,0.82)' : m.color, opacity: imgUrl ? 1 : 0.75, textShadow: imgUrl ? '0 1px 2px rgba(0,0,0,0.4)' : 'none' }}>{isAdminManage ? 'Click to manage link' : m.sub}</div>
+      </div>
+    </div>
+  )
+}
+
+// Blurred locked card shown to students for features they can't access
+function LockedCard({ m }) {
+  return (
+    <div style={{ borderRadius: 'var(--radius-lg)', overflow: 'hidden', border: '1px solid var(--border)', position: 'relative', height: 160, cursor: 'not-allowed' }}>
+      {/* Blurred background */}
+      <div style={{ position: 'absolute', inset: 0, background: m.bg, filter: 'blur(2px)', opacity: 0.5 }} />
+      {/* Lock overlay */}
+      <div style={{ position: 'absolute', inset: 0, background: 'rgba(255,255,255,0.55)', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 6 }}>
+        <div style={{ fontSize: 22, filter: 'grayscale(1)', opacity: 0.4 }}>{m.icon}</div>
+        <div style={{ fontSize: 13, fontWeight: 600, color: '#888' }}>{m.label}</div>
+        <div style={{ fontSize: 10, color: '#aaa', display: 'flex', alignItems: 'center', gap: 4 }}>
+          <span>🔒</span> Staff only
+        </div>
+      </div>
+    </div>
+  )
+}
+
+function CardGridView({ modules, onNavigate, mileageUrl, labSafetyUrl, isAdmin, onEditUrl, moduleImages, isStudent, studentUnlocked }) {
+  const [confirmExternal, setConfirmExternal] = useState(null)
+
+  if (isStudent) {
+    // Show all modules — unlocked ones are clickable, locked ones are blurred
+    const allMods = getAllModulesForStudent()
+    return (
+      <>
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(180px, 1fr))', gap: 14 }}>
+          {allMods.map(m => {
+            if (m.locked) return <LockedCard key={m.key} m={m} />
+            return (
+              <ModuleCard key={m.key} m={m} imgUrl={moduleImages[m.key]}
+                onClick={() => m.external ? setConfirmExternal({ url: m.key === 'mileage' ? mileageUrl : labSafetyUrl }) : onNavigate(m.screen)} />
+            )
+          })}
+        </div>
+        {confirmExternal && (
+          <ExternalLinkModal url={confirmExternal.url}
+            onConfirm={() => { window.open(confirmExternal.url, '_blank'); setConfirmExternal(null) }}
+            onCancel={() => setConfirmExternal(null)} />
+        )}
+      </>
+    )
+  }
+
+  return (
+    <>
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(180px, 1fr))', gap: 14 }}>
+        {modules.map(m => (
+          <ModuleCard key={m.key} m={m} imgUrl={moduleImages[m.key]}
+            onClick={() => m.external ? setConfirmExternal({ url: m.key === 'mileage' ? mileageUrl : labSafetyUrl }) : onNavigate(m.screen)} />
+        ))}
+        {isAdmin && [
+          { key: 'mileage', icon: '🚗', label: 'Mileage Form', sub: 'Manage link', bg: '#fdf0ed', color: '#c84b2f' },
+          { key: 'labsafety', icon: '🦺', label: 'Lab Safety', sub: 'Manage link', bg: '#fef3c7', color: '#92400e' },
+        ].map(card => (
+          <ModuleCard key={card.key} m={card} imgUrl={moduleImages[card.key]} isAdminManage onClick={() => onEditUrl(card.key)} />
+        ))}
+      </div>
+      {confirmExternal && (
+        <ExternalLinkModal url={confirmExternal.url}
+          onConfirm={() => { window.open(confirmExternal.url, '_blank'); setConfirmExternal(null) }}
+          onCancel={() => setConfirmExternal(null)} />
+      )}
+    </>
+  )
+}
+
+// ══════════════════════════════════════════════════════════════
+// STUDENT DASHBOARD VIEW
+// ══════════════════════════════════════════════════════════════
+function StudentDashboardView({ session, onNavigate, mileageUrl, labSafetyUrl, moduleImages }) {
+  const [data, setData] = useState({
+    myProjects: 0,
+    trainingsComplete: 0,
+    trainingsTotal: 4,
+    upcomingBookings: [],
+    pendingCert: false,
+  })
+  const [loading, setLoading] = useState(true)
+  const [confirmExternal, setConfirmExternal] = useState(null)
+
+  useEffect(() => { if (session?.userId) loadStudentData() }, [session?.userId])
+
+  async function loadStudentData() {
+    setLoading(true)
+    try {
+      const userId = session.userId
+      const userName = session.username
+      const { data: projects } = await sb.from('projects').select('id, title, status')
+        .or(`students.cs.{"${userName}"},students.ilike.%${userName}%`)
+        .eq('status', 'active')
+      const [freshRes, golfRes, alarmRes, eqRes, pendingRes, bookingsRes] = await Promise.all([
+        sb.from('training_fresh').select('id, admin_approved').eq('user_id', userId).maybeSingle(),
+        sb.from('training_golf_car').select('id').eq('user_id', userId).maybeSingle(),
+        sb.from('training_building_alarm').select('id').eq('user_id', userId).maybeSingle(),
+        sb.from('training_equipment').select('id').eq('user_id', userId).limit(1),
+        sb.from('training_fresh').select('id').eq('user_id', userId).eq('admin_approved', false).maybeSingle(),
+        sb.from('equipment_bookings').select('id, equipment_name, start_time, end_time, status')
+          .eq('user_id', userId).gte('start_time', new Date().toISOString()).order('start_time').limit(3),
+      ])
+      let done = 0
+      if (freshRes.data?.admin_approved) done++
+      if (golfRes.data) done++
+      if (alarmRes.data) done++
+      if (eqRes.data?.length) done++
+      setData({ myProjects: projects?.length || 0, trainingsComplete: done, trainingsTotal: 4, upcomingBookings: bookingsRes.data || [], pendingCert: !!pendingRes.data })
+    } catch(e) {}
+    setLoading(false)
+  }
+
+  const trainingPct = Math.round((data.trainingsComplete / data.trainingsTotal) * 100)
+  const trainingColor = trainingPct === 100 ? '#2a6049' : trainingPct >= 50 ? '#0369a1' : '#c84b2f'
+
+  const quickLinks = [
+    { key: 'projects',    icon: '🧪', label: 'My Projects',       sub: 'View assigned projects',      screen: 'projects',    color: '#7c4dbd' },
+    { key: 'training',    icon: '🎓', label: 'Training Records',   sub: 'Check your certs',            screen: 'training',    color: '#0369a1' },
+    { key: 'booking',     icon: '📅', label: 'Book Equipment',     sub: 'Reserve lab equipment',       screen: 'booking',     color: '#0369a1' },
+    { key: 'equipmenthub',icon: '📚', label: 'Equipment Info',     sub: 'SOPs & standards',            screen: 'equipmenthub',color: '#1e4d39' },
+    { key: 'remessages',  icon: '💬', label: 'Contact Lab Manager',sub: 'Ask REs a question',          screen: 'remessages',  color: '#2a6049' },
+    { key: 'mileage',     icon: '🚗', label: 'Mileage Form',       sub: 'Submit reimbursement',        screen: null,          color: '#c84b2f', external: true },
+  ]
+
+  return (
+    <>
+      <div style={{ display: 'grid', gridTemplateColumns: '1fr 260px', gap: 20, alignItems: 'start' }}>
+        <div>
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: 12, marginBottom: 20 }}>
+            <div onClick={() => onNavigate('projects')} style={{ background: 'var(--surface)', border: '1px solid var(--border)', borderRadius: 'var(--radius-lg)', padding: '18px 20px', cursor: 'pointer', transition: 'all 0.15s' }}
+              onMouseEnter={e => e.currentTarget.style.borderColor = '#7c4dbd'}
+              onMouseLeave={e => e.currentTarget.style.borderColor = 'var(--border)'}>
+              <div style={{ fontSize: 28, fontWeight: 600, color: '#7c4dbd', marginBottom: 4 }}>{loading ? '—' : data.myProjects}</div>
+              <div style={{ fontSize: 13, color: 'var(--text2)' }}>My active projects</div>
+            </div>
+            <div onClick={() => onNavigate('training')} style={{ background: 'var(--surface)', border: '1px solid var(--border)', borderRadius: 'var(--radius-lg)', padding: '18px 20px', cursor: 'pointer', transition: 'all 0.15s' }}
+              onMouseEnter={e => e.currentTarget.style.borderColor = trainingColor}
+              onMouseLeave={e => e.currentTarget.style.borderColor = 'var(--border)'}>
+              <div style={{ fontSize: 28, fontWeight: 600, color: trainingColor, marginBottom: 4 }}>{loading ? '—' : `${data.trainingsComplete}/${data.trainingsTotal}`}</div>
+              <div style={{ fontSize: 13, color: 'var(--text2)', marginBottom: 8 }}>Trainings complete</div>
+              {!loading && (
+                <div style={{ height: 4, background: 'var(--surface2)', borderRadius: 99, overflow: 'hidden' }}>
+                  <div style={{ height: '100%', width: `${trainingPct}%`, background: trainingColor, borderRadius: 99, transition: 'width 0.6s' }} />
+                </div>
+              )}
+            </div>
+            <div onClick={() => onNavigate('booking')} style={{ background: 'var(--surface)', border: '1px solid var(--border)', borderRadius: 'var(--radius-lg)', padding: '18px 20px', cursor: 'pointer', transition: 'all 0.15s' }}
+              onMouseEnter={e => e.currentTarget.style.borderColor = '#0369a1'}
+              onMouseLeave={e => e.currentTarget.style.borderColor = 'var(--border)'}>
+              <div style={{ fontSize: 28, fontWeight: 600, color: '#0369a1', marginBottom: 4 }}>{loading ? '—' : data.upcomingBookings.length}</div>
+              <div style={{ fontSize: 13, color: 'var(--text2)' }}>Upcoming bookings</div>
+            </div>
+            <div onClick={() => onNavigate('training')} style={{ background: 'var(--surface)', border: '1px solid var(--border)', borderRadius: 'var(--radius-lg)', padding: '18px 20px', cursor: 'pointer', transition: 'all 0.15s' }}
+              onMouseEnter={e => e.currentTarget.style.borderColor = data.pendingCert ? '#c84b2f' : '#2a6049'}
+              onMouseLeave={e => e.currentTarget.style.borderColor = 'var(--border)'}>
+              <div style={{ fontSize: 24, marginBottom: 4 }}>{loading ? '—' : data.pendingCert ? '⏳' : '✅'}</div>
+              <div style={{ fontSize: 13, color: 'var(--text2)' }}>{data.pendingCert ? 'Cert pending approval' : 'Cert up to date'}</div>
+            </div>
+          </div>
+          <div style={{ background: 'var(--surface)', border: '1px solid var(--border)', borderRadius: 'var(--radius-lg)', padding: '18px 20px', marginBottom: 16 }}>
+            <div style={{ fontSize: 12, fontWeight: 500, color: 'var(--text3)', fontFamily: 'var(--mono)', textTransform: 'uppercase', letterSpacing: '0.06em', marginBottom: 14 }}>Upcoming bookings</div>
+            {loading ? <div style={{ textAlign: 'center', padding: 16 }}><div className="spinner" style={{ margin: '0 auto' }} /></div>
+              : data.upcomingBookings.length === 0
+              ? <div style={{ fontSize: 13, color: 'var(--text3)', textAlign: 'center', padding: '12px 0' }}>No upcoming bookings. <span onClick={() => onNavigate('booking')} style={{ color: 'var(--accent)', cursor: 'pointer' }}>Book equipment →</span></div>
+              : data.upcomingBookings.map(b => {
+                  const start = new Date(b.start_time)
+                  return (
+                    <div key={b.id} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '8px 0', borderBottom: '1px solid var(--surface2)' }}>
+                      <div>
+                        <div style={{ fontSize: 14, fontWeight: 500 }}>{b.equipment_name || 'Equipment'}</div>
+                        <div style={{ fontSize: 12, color: 'var(--text3)', fontFamily: 'var(--mono)' }}>{start.toLocaleDateString()} · {start.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</div>
+                      </div>
+                      <span style={{ fontSize: 11, color: b.status === 'confirmed' ? '#2a6049' : '#0369a1', background: b.status === 'confirmed' ? '#e8f2ee' : '#e0f2fe', borderRadius: 4, padding: '2px 8px', fontWeight: 500 }}>{b.status || 'Pending'}</span>
+                    </div>
+                  )
+                })
+            }
+          </div>
+          <div style={{ background: 'var(--surface)', border: '1px solid var(--border)', borderRadius: 'var(--radius-lg)', padding: '18px 20px' }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 14 }}>
+              <div style={{ fontSize: 12, fontWeight: 500, color: 'var(--text3)', fontFamily: 'var(--mono)', textTransform: 'uppercase', letterSpacing: '0.06em' }}>Training checklist</div>
+              <span onClick={() => onNavigate('training')} style={{ fontSize: 12, color: 'var(--accent)', cursor: 'pointer', fontWeight: 500 }}>View all →</span>
+            </div>
+            {[
+              { label: 'Fresh Student Training', done: data.trainingsComplete >= 1, note: data.pendingCert ? 'Pending approval' : null },
+              { label: 'Golf Car Safety', done: data.trainingsComplete >= 2 },
+              { label: 'Equipment Training', done: data.trainingsComplete >= 3 },
+              { label: 'Building Alarm', done: data.trainingsComplete >= 4 },
+            ].map((t, i) => (
+              <div key={i} style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '8px 0', borderBottom: i < 3 ? '1px solid var(--surface2)' : 'none' }}>
+                <div style={{ width: 22, height: 22, borderRadius: '50%', background: t.done ? '#2a6049' : 'var(--surface2)', border: `2px solid ${t.done ? '#2a6049' : 'var(--border)'}`, display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+                  {t.done && <span style={{ color: '#fff', fontSize: 11, fontWeight: 700 }}>✓</span>}
+                </div>
+                <div>
+                  <div style={{ fontSize: 13, fontWeight: 500, color: t.done ? 'var(--text)' : 'var(--text2)' }}>{t.label}</div>
+                  {t.note && <div style={{ fontSize: 11, color: '#c84b2f' }}>{t.note}</div>}
+                </div>
+                {!t.done && <span style={{ marginLeft: 'auto', fontSize: 11, color: 'var(--text3)' }}>Incomplete</span>}
+              </div>
+            ))}
+          </div>
+        </div>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+          <div style={{ fontSize: 12, fontWeight: 500, color: 'var(--text3)', fontFamily: 'var(--mono)', textTransform: 'uppercase', letterSpacing: '0.06em', marginBottom: 6 }}>Quick access</div>
+          {quickLinks.map(m => (
+            <div key={m.key}
+              onClick={() => m.external ? setConfirmExternal({ url: mileageUrl }) : onNavigate(m.screen)}
+              style={{ borderRadius: 'var(--radius-lg)', overflow: 'hidden', cursor: 'pointer', height: 56, position: 'relative', border: '1px solid var(--border)', transition: 'all 0.15s' }}
+              onMouseEnter={e => e.currentTarget.style.borderColor = m.color}
+              onMouseLeave={e => e.currentTarget.style.borderColor = 'var(--border)'}>
+              {moduleImages[m.key]
+                ? (<><img src={moduleImages[m.key]} alt="" style={{ position: 'absolute', inset: 0, width: '100%', height: '100%', objectFit: 'cover' }} /><div style={{ position: 'absolute', inset: 0, background: 'linear-gradient(to right, rgba(0,0,0,0.65) 0%, rgba(0,0,0,0.2) 100%)' }} /></>)
+                : <div style={{ position: 'absolute', inset: 0, background: `${m.color}18` }} />
+              }
+              <div style={{ position: 'absolute', inset: 0, display: 'flex', alignItems: 'center', gap: 12, padding: '0 14px' }}>
+                <span style={{ fontSize: 18, flexShrink: 0 }}>{m.icon}</span>
+                <div style={{ flex: 1, minWidth: 0 }}>
+                  <div style={{ fontSize: 13, fontWeight: 600, color: moduleImages[m.key] ? '#fff' : 'var(--text)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{m.label}</div>
+                  <div style={{ fontSize: 10, color: moduleImages[m.key] ? 'rgba(255,255,255,0.75)' : 'var(--text3)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{m.sub}</div>
+                </div>
+                {m.external && <span style={{ fontSize: 10, color: 'var(--text3)', flexShrink: 0 }}>↗</span>}
+              </div>
+            </div>
+          ))}
+        </div>
+      </div>
+      {confirmExternal && <ExternalLinkModal url={confirmExternal.url} onConfirm={() => { window.open(confirmExternal.url, '_blank'); setConfirmExternal(null) }} onCancel={() => setConfirmExternal(null)} />}
+    </>
+  )
+}
+
+// ══════════════════════════════════════════════════════════════
+// ADMIN DASHBOARD VIEW
+// ══════════════════════════════════════════════════════════════
+function DashboardView({ modules, onNavigate, session, mileageUrl, labSafetyUrl, isAdmin, onEditUrl, moduleImages }) {
+  const [stats, setStats] = useState({ lowSupplies: 0, activeProjects: 0, students: 0, pendingTraining: 0 })
+  const [recentInspections, setRecentInspections] = useState([])
+  const [loading, setLoading] = useState(true)
+  const [confirmExternal, setConfirmExternal] = useState(null)
+  useEffect(() => { loadStats() }, [])
+  async function loadStats() {
+    setLoading(true)
+    try {
+      const [supplies, projects, students, inspections, training] = await Promise.all([
+        sb.from('supplies').select('id, min_qty'),
+        sb.from('projects').select('id, status').eq('status', 'active'),
+        sb.from('users').select('id').eq('role', 'student').eq('is_active', true),
+        sb.from('inspections').select('id, room_name, inspected_at, flag_count, inspector').order('inspected_at', { ascending: false }).limit(5),
+        sb.from('training_fresh').select('id').eq('admin_approved', false),
+      ])
+      setStats({ lowSupplies: (supplies.data||[]).length, activeProjects: (projects.data||[]).length, students: (students.data||[]).length, pendingTraining: (training.data||[]).length })
+      setRecentInspections(inspections.data || [])
+    } catch(e) {}
+    setLoading(false)
+  }
+  const statCards = [
+    { label: 'Active projects',       value: stats.activeProjects, color: '#7c4dbd', bg: '#f3eeff', screen: 'projects' },
+    { label: 'Active students',        value: stats.students,       color: '#0369a1', bg: '#e0f2fe', screen: 'training' },
+    { label: 'Pending cert approvals', value: stats.pendingTraining,color: '#c84b2f', bg: '#fdf0ed', screen: 'training' },
+    { label: 'Supply items tracked',   value: stats.lowSupplies,   color: '#2a6049', bg: '#e8f2ee', screen: 'home'     },
+  ]
+  return (
+    <>
+      <div style={{ display: 'grid', gridTemplateColumns: '1fr 280px', gap: 20, alignItems: 'start' }}>
+        <div>
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: 12, marginBottom: 20 }}>
+            {statCards.map(s => (
+              <div key={s.label} onClick={() => onNavigate(s.screen)}
+                style={{ background: 'var(--surface)', border: '1px solid var(--border)', borderRadius: 'var(--radius-lg)', padding: '18px 20px', cursor: 'pointer', transition: 'all 0.15s' }}
+                onMouseEnter={e => e.currentTarget.style.borderColor = s.color}
+                onMouseLeave={e => e.currentTarget.style.borderColor = 'var(--border)'}>
+                <div style={{ fontSize: 28, fontWeight: 600, color: s.color, marginBottom: 4 }}>{loading ? '—' : s.value}</div>
+                <div style={{ fontSize: 13, color: 'var(--text2)' }}>{s.label}</div>
+              </div>
+            ))}
+          </div>
+          <div style={{ background: 'var(--surface)', border: '1px solid var(--border)', borderRadius: 'var(--radius-lg)', padding: '18px 20px' }}>
+            <div style={{ fontSize: 12, fontWeight: 500, color: 'var(--text3)', fontFamily: 'var(--mono)', textTransform: 'uppercase', letterSpacing: '0.06em', marginBottom: 14 }}>Recent inspections</div>
+            {loading ? <div style={{ textAlign: 'center', padding: 16 }}><div className="spinner" style={{ margin: '0 auto' }} /></div>
+              : recentInspections.length === 0 ? <div style={{ fontSize: 13, color: 'var(--text3)', textAlign: 'center', padding: 16 }}>No inspections yet.</div>
+              : recentInspections.map(r => (
+                <div key={r.id} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '8px 0', borderBottom: '1px solid var(--surface2)' }}>
+                  <div>
+                    <div style={{ fontSize: 14, fontWeight: 500 }}>{r.room_name}</div>
+                    <div style={{ fontSize: 12, color: 'var(--text3)', fontFamily: 'var(--mono)' }}>{new Date(r.inspected_at).toLocaleDateString()} · {r.inspector}</div>
+                  </div>
+                  {r.flag_count > 0 ? <span style={{ fontSize: 12, color: 'var(--accent2)', fontWeight: 500 }}>{r.flag_count} low</span> : <span style={{ fontSize: 12, color: 'var(--accent)', fontWeight: 500 }}>All OK</span>}
+                </div>
+              ))}
+          </div>
+        </div>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+          <div style={{ fontSize: 12, fontWeight: 500, color: 'var(--text3)', fontFamily: 'var(--mono)', textTransform: 'uppercase', letterSpacing: '0.06em', marginBottom: 6 }}>Quick access</div>
+          {modules.map(m => (
+            <div key={m.key} onClick={() => m.external ? setConfirmExternal({ url: m.key === 'mileage' ? mileageUrl : labSafetyUrl }) : onNavigate(m.screen)}
+              style={{ borderRadius: 'var(--radius-lg)', overflow: 'hidden', cursor: 'pointer', height: 56, position: 'relative', border: '1px solid var(--border)', transition: 'all 0.15s' }}
+              onMouseEnter={e => e.currentTarget.style.borderColor = m.color}
+              onMouseLeave={e => e.currentTarget.style.borderColor = 'var(--border)'}>
+              {moduleImages[m.key] ? (<><img src={moduleImages[m.key]} alt="" style={{ position: 'absolute', inset: 0, width: '100%', height: '100%', objectFit: 'cover' }} /><div style={{ position: 'absolute', inset: 0, background: 'linear-gradient(to right, rgba(0,0,0,0.65) 0%, rgba(0,0,0,0.2) 100%)' }} /></>) : <div style={{ position: 'absolute', inset: 0, background: m.bg }} />}
+              <div style={{ position: 'absolute', inset: 0, display: 'flex', alignItems: 'center', gap: 12, padding: '0 14px' }}>
+                {!moduleImages[m.key] && <span style={{ fontSize: 18, flexShrink: 0 }}>{m.icon}</span>}
+                <div style={{ flex: 1, minWidth: 0 }}>
+                  <div style={{ fontSize: 13, fontWeight: 600, color: moduleImages[m.key] ? '#fff' : 'var(--text)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{m.label}</div>
+                  <div style={{ fontSize: 10, color: moduleImages[m.key] ? 'rgba(255,255,255,0.75)' : 'var(--text3)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{m.sub}</div>
+                </div>
+                {m.external && <span style={{ fontSize: 10, color: moduleImages[m.key] ? 'rgba(255,255,255,0.7)' : 'var(--text3)', flexShrink: 0 }}>↗</span>}
+              </div>
+            </div>
+          ))}
+        </div>
+      </div>
+      {confirmExternal && <ExternalLinkModal url={confirmExternal.url} onConfirm={() => { window.open(confirmExternal.url, '_blank'); setConfirmExternal(null) }} onCancel={() => setConfirmExternal(null)} />}
+    </>
+  )
+}
+
 export default function Dashboard() {
-  return <div style={{ padding: 32, color: 'var(--text)' }}>Dashboard — pending full migration from lab-inventory base.</div>
+  const { session, setScreen } = useAppStore()
+  const [view, setView] = useState(() => localStorage.getItem('labstock_view') || 'grid')
+  const [mileageUrl, setMileageUrl] = useState('https://bw4qh7p8sn.us-east-1.awsapprunner.com/')
+  const [labSafetyUrl, setLabSafetyUrl] = useState('https://canvas.illinois.edu/')
+  const [editingUrl, setEditingUrl] = useState(null)
+  const [urlInput, setUrlInput] = useState('')
+  const [savingUrl, setSavingUrl] = useState(false)
+  const [userAccess, setUserAccess] = useState(null)
+  const [moduleImages, setModuleImages] = useState({})
+  const isAdmin = session?.role === 'admin'
+  const isStudent = session?.role === 'student'
+
+  useEffect(() => {
+    if (session?.userId && (session?.role === 'user' || session?.role === 'admin')) {
+      sb.from('user_screen_access').select('screen_key').eq('user_id', session.userId)
+        .then(({ data }) => { if (data?.length) setUserAccess(new Set(data.map(r => r.screen_key))) })
+    }
+  }, [session?.userId])
+
+  const allModules = getModules(session?.role)
+  const modules = userAccess ? allModules.filter(m => m.external || !m.screen || userAccess.has(m.screen) || m.screen === 'profile' || m.screen === 'dashboard' || m.screen === 'pm') : allModules
+
+  useEffect(() => { loadSettings() }, [])
+
+  async function loadSettings() {
+    const { data } = await sb.from('settings').select('key, value')
+      .in('key', ['mileage_url','labsafety_url','img_supply','img_projects','img_training','img_equipment','img_equipmenthub','img_booking','img_mileage','img_labsafety','img_remessages','img_profile','img_pm'])
+    if (!data) return
+    const imgs = {}
+    data.forEach(r => {
+      if (r.key === 'mileage_url') setMileageUrl(r.value)
+      else if (r.key === 'labsafety_url') setLabSafetyUrl(r.value)
+      else if (r.key.startsWith('img_')) imgs[r.key.replace('img_', '')] = r.value
+    })
+    setModuleImages(imgs)
+  }
+
+  async function saveUrl() {
+    if (!urlInput.trim()) return
+    setSavingUrl(true)
+    const key = editingUrl === 'mileage' ? 'mileage_url' : 'labsafety_url'
+    await sb.from('settings').upsert({ key, value: urlInput.trim() })
+    if (editingUrl === 'mileage') setMileageUrl(urlInput.trim())
+    else setLabSafetyUrl(urlInput.trim())
+    setEditingUrl(null); setSavingUrl(false)
+  }
+
+  function switchView(v) { setView(v); localStorage.setItem('labstock_view', v) }
+
+  const greeting = () => { const h = new Date().getHours(); if (h < 12) return 'Good morning'; if (h < 17) return 'Good afternoon'; return 'Good evening' }
+  const days = ['Sunday','Monday','Tuesday','Wednesday','Thursday','Friday','Saturday']
+  const months = ['January','February','March','April','May','June','July','August','September','October','November','December']
+  const now = new Date()
+  const dateStr = `${days[now.getDay()]}, ${months[now.getMonth()]} ${now.getDate()}, ${now.getFullYear()}`
+  const showDashboardToggle = !isStudent
+
+  return (
+    <div>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 28, flexWrap: 'wrap', gap: 12 }}>
+        <div>
+          <div style={{ fontSize: 22, fontWeight: 600, letterSpacing: '-0.4px', marginBottom: 4 }}>{greeting()}, {session?.username}</div>
+          <div style={{ fontSize: 13, color: 'var(--text3)', fontFamily: 'var(--mono)' }}>{dateStr} · ICT Lab</div>
+        </div>
+        <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+          {showDashboardToggle && (
+            <div style={{ display: 'flex', background: 'var(--surface2)', borderRadius: 'var(--radius)', padding: 3, gap: 2 }}>
+              <button onClick={() => switchView('grid')} style={{ padding: '6px 14px', border: 'none', borderRadius: 8, fontFamily: 'var(--sans)', fontSize: 13, fontWeight: 500, cursor: 'pointer', background: view === 'grid' ? 'var(--surface)' : 'transparent', color: view === 'grid' ? 'var(--text)' : 'var(--text2)', transition: 'all 0.15s' }}>⊞ Cards</button>
+              <button onClick={() => switchView('dashboard')} style={{ padding: '6px 14px', border: 'none', borderRadius: 8, fontFamily: 'var(--sans)', fontSize: 13, fontWeight: 500, cursor: 'pointer', background: view === 'dashboard' ? 'var(--surface)' : 'transparent', color: view === 'dashboard' ? 'var(--text)' : 'var(--text2)', transition: 'all 0.15s' }}>☰ Dashboard</button>
+            </div>
+          )}
+          {isStudent && (
+            <div style={{ display: 'flex', background: 'var(--surface2)', borderRadius: 'var(--radius)', padding: 3, gap: 2 }}>
+              <button onClick={() => switchView('grid')} style={{ padding: '6px 14px', border: 'none', borderRadius: 8, fontFamily: 'var(--sans)', fontSize: 13, fontWeight: 500, cursor: 'pointer', background: view === 'grid' ? 'var(--surface)' : 'transparent', color: view === 'grid' ? 'var(--text)' : 'var(--text2)', transition: 'all 0.15s' }}>⊞ Cards</button>
+              <button onClick={() => switchView('dashboard')} style={{ padding: '6px 14px', border: 'none', borderRadius: 8, fontFamily: 'var(--sans)', fontSize: 13, fontWeight: 500, cursor: 'pointer', background: view === 'dashboard' ? 'var(--surface)' : 'transparent', color: view === 'dashboard' ? 'var(--text)' : 'var(--text2)', transition: 'all 0.15s' }}>📋 My Activity</button>
+            </div>
+          )}
+        </div>
+      </div>
+
+      {isStudent && view === 'dashboard' && (
+        <StudentDashboardView session={session} onNavigate={s => setScreen(s)} mileageUrl={mileageUrl} labSafetyUrl={labSafetyUrl} moduleImages={moduleImages} />
+      )}
+      {isStudent && view === 'grid' && (
+        <CardGridView modules={modules} onNavigate={s => setScreen(s)} mileageUrl={mileageUrl} labSafetyUrl={labSafetyUrl} isAdmin={false} onEditUrl={() => {}} moduleImages={moduleImages} isStudent={true} />
+      )}
+      {!isStudent && view === 'grid' && (
+        <CardGridView modules={modules} onNavigate={s => setScreen(s)} mileageUrl={mileageUrl} labSafetyUrl={labSafetyUrl} isAdmin={isAdmin} onEditUrl={(type) => { setEditingUrl(type); setUrlInput(type === 'mileage' ? mileageUrl : labSafetyUrl) }} moduleImages={moduleImages} isStudent={false} />
+      )}
+      {!isStudent && view === 'dashboard' && (
+        <DashboardView modules={modules} onNavigate={s => setScreen(s)} session={session} mileageUrl={mileageUrl} labSafetyUrl={labSafetyUrl} isAdmin={isAdmin} onEditUrl={(type) => { setEditingUrl(type); setUrlInput(type === 'mileage' ? mileageUrl : labSafetyUrl) }} moduleImages={moduleImages} />
+      )}
+
+      {editingUrl !== null && (
+        <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.4)', zIndex: 300, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 20 }}>
+          <div style={{ background: 'var(--surface)', borderRadius: 'var(--radius-lg)', padding: 28, maxWidth: 480, width: '100%', border: '1px solid var(--border)' }}>
+            <div style={{ fontWeight: 700, fontSize: 17, marginBottom: 4 }}>{editingUrl === 'mileage' ? '🚗 Mileage Form URL' : '🦺 Lab Safety URL'}</div>
+            <div style={{ fontSize: 13, color: 'var(--text2)', marginBottom: 16 }}>Update the external link for the {editingUrl === 'mileage' ? 'Mileage Form' : 'Lab Safety'} icon.</div>
+            <div className="field"><label>Website URL</label><input type="url" value={urlInput} onChange={e => setUrlInput(e.target.value)} placeholder="https://..." onKeyDown={e => e.key === 'Enter' && saveUrl()} /></div>
+            <div style={{ display: 'flex', gap: 10, marginTop: 8 }}>
+              <button className="btn btn-primary" onClick={saveUrl} disabled={savingUrl || !urlInput.trim()}>{savingUrl ? 'Saving…' : 'Save URL'}</button>
+              <button className="btn" onClick={() => setEditingUrl(null)}>Cancel</button>
+            </div>
+          </div>
+        </div>
+      )}
+    </div>
+  )
 }
