@@ -25,8 +25,24 @@ export default function App() {
   const [userAccess, setUserAccess] = useState(null)
 
   useEffect(() => {
-    refreshCache().finally(() => setLoading(false))
+    // Solo users don't need the team cache (rooms, supplies, settings)
+    // Skip it to make the app load faster for them
+    const loginMode = localStorage.getItem('ilab_login_mode')
+    if (loginMode === 'solo') {
+      setLoading(false)
+    } else {
+      refreshCache().finally(() => setLoading(false))
+    }
   }, [])
+
+  useEffect(() => {
+    // Save login mode to localStorage so we know on next load
+    if (session?.loginMode) {
+      localStorage.setItem('ilab_login_mode', session.loginMode)
+    } else if (!session) {
+      localStorage.removeItem('ilab_login_mode')
+    }
+  }, [session])
 
   useEffect(() => {
     if (session?.userId && (session?.role === 'user' || session?.role === 'admin')) {
