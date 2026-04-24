@@ -1,45 +1,45 @@
 import { useState, useEffect } from 'react'
 import { sb } from '../lib/supabase'
 import { useAppStore } from '../store/useAppStore'
+import { ALL_MODULES_META, PINNED_MODULES } from '../components/DashboardIconPicker'
 
-// All modules — PM only shown to admin/user (staff)
-function getModules(role) {
-  const all = [
-    { key: 'supply',      screen: 'home',        label: 'Supply Inventory',          sub: 'Weekly inspection & export',       icon: '📦', bg: '#e8f2ee', color: '#2a6049' },
-    { key: 'projects',    screen: 'projects',    label: 'Project Inventory',         sub: 'Materials, storage & database',    icon: '🧪', bg: '#f3eeff', color: '#7c4dbd' },
-    { key: 'training',    screen: 'training',    label: 'Training Records',          sub: 'Certs, equipment & alarm',         icon: '🎓', bg: '#e0f2fe', color: '#0369a1' },
-    { key: 'equipment',   screen: 'equipment',   label: 'Equipment Inventory',       sub: 'Lab equipment tracking',           icon: '🔧', bg: '#fef3c7', color: '#92400e' },
-    { key: 'equipmenthub',screen: 'equipmenthub',label: 'Equipment',                 sub: 'Info, SOP & standards',            icon: '📚', bg: '#e8f2ee', color: '#1e4d39' },
-    { key: 'booking',     screen: 'booking',     label: 'Booking Equipment',         sub: 'Reserve lab equipment',            icon: '📅', bg: '#e0f2fe', color: '#0369a1' },
-    { key: 'mileage',     screen: null,          label: 'Mileage Form',              sub: 'Submit mileage reimbursement',     icon: '🚗', bg: '#fdf0ed', color: '#c84b2f', external: true },
-    { key: 'labsafety',   screen: null,          label: 'Lab Safety',                sub: 'Safety training & certification',  icon: '🦺', bg: '#fef3c7', color: '#92400e', external: true },
-    { key: 'remessages',  screen: 'remessages',  label: 'Contact Lab Manager (REs)', sub: 'Notes, ideas & issue reports',    icon: '💬', bg: '#e8f2ee', color: '#2a6049' },
-    { key: 'profile',     screen: 'profile',     label: 'Profile',                   sub: 'Your info & settings',             icon: '👤', bg: '#f3eeff', color: '#7c4dbd' },
-  ]
-  // PM module — only for admin and staff (user role)
-  const pmModule = { key: 'pm', screen: 'pm', label: 'Project Management', sub: 'Tasks, meetings & team chat', icon: '📋', bg: '#fff3e0', color: '#ff6b00' }
+// Build the visible module list for a user based on their role + saved prefs
+// activeModules: string[] | null  — null means "show all allowed"
+function getModules(role, loginMode, activeModules) {
+  const roleKey = loginMode === 'solo' ? 'solo' : 'team'
 
-  if (role === 'admin') return [...all.filter(m => !m.external), pmModule]
-  if (role === 'user')  return [...all, pmModule]
-  if (role === 'student') return all.filter(m => ['projects','training','profile','equipmenthub','booking','mileage','labsafety','remessages'].includes(m.key))
-  return all
+  const studentAllowed = ['projects','training','booking','equipmenthub','mileage','labsafety','remessages','profile']
+
+  const base = ALL_MODULES_META.filter(m => {
+    if (!m.roles.includes(roleKey)) return false
+    if (role === 'student' && !studentAllowed.includes(m.key)) return false
+    return true
+  })
+
+  // If user has saved prefs, filter to those + pinned
+  if (activeModules && activeModules.length > 0) {
+    const allowed = new Set([...activeModules, ...PINNED_MODULES])
+    return base.filter(m => allowed.has(m.key))
+  }
+
+  return base
 }
 
 // ALL modules visible to students but locked — for blurred card display
 function getAllModulesForStudent() {
   return [
-    { key: 'supply',      screen: 'home',        label: 'Supply Inventory',          sub: 'Weekly inspection & export',       icon: '📦', bg: '#e8f2ee', color: '#2a6049' },
-    { key: 'projects',    screen: 'projects',    label: 'Project Inventory',         sub: 'Materials, storage & database',    icon: '🧪', bg: '#f3eeff', color: '#7c4dbd' },
-    { key: 'training',    screen: 'training',    label: 'Training Records',          sub: 'Certs, equipment & alarm',         icon: '🎓', bg: '#e0f2fe', color: '#0369a1' },
-    { key: 'equipment',   screen: 'equipment',   label: 'Equipment Inventory',       sub: 'Lab equipment tracking',           icon: '🔧', bg: '#fef3c7', color: '#92400e', locked: true },
-    { key: 'equipmenthub',screen: 'equipmenthub',label: 'Equipment',                 sub: 'Info, SOP & standards',            icon: '📚', bg: '#e8f2ee', color: '#1e4d39' },
-    { key: 'booking',     screen: 'booking',     label: 'Booking Equipment',         sub: 'Reserve lab equipment',            icon: '📅', bg: '#e0f2fe', color: '#0369a1' },
-    { key: 'mileage',     screen: null,          label: 'Mileage Form',              sub: 'Submit mileage reimbursement',     icon: '🚗', bg: '#fdf0ed', color: '#c84b2f', external: true },
-    { key: 'labsafety',   screen: null,          label: 'Lab Safety',                sub: 'Safety training & certification',  icon: '🦺', bg: '#fef3c7', color: '#92400e', external: true },
-    { key: 'remessages',  screen: 'remessages',  label: 'Contact Lab Manager (REs)', sub: 'Notes, ideas & issue reports',    icon: '💬', bg: '#e8f2ee', color: '#2a6049' },
-    { key: 'pm',          screen: 'pm',          label: 'Project Management',        sub: 'Tasks, meetings & team chat',      icon: '📋', bg: '#fff3e0', color: '#ff6b00', locked: true },
-    { key: 'profile',     screen: 'profile',     label: 'Profile',                   sub: 'Your info & settings',             icon: '👤', bg: '#f3eeff', color: '#7c4dbd' },
-    { key: 'supply_admin',screen: 'home',        label: 'Admin Tools',               sub: 'Rooms, supplies & settings',       icon: '⚙️', bg: '#f5f5f5', color: '#555', locked: true },
+    { key: 'supply',       screen: 'home',          label: 'Supply Inventory',          sub: 'Weekly inspection & export',       icon: '📦', bg: '#e8f2ee', color: '#2a6049' },
+    { key: 'projects',     screen: 'projects',      label: 'Project Inventory',         sub: 'Materials, storage & database',    icon: '🧪', bg: '#f3eeff', color: '#7c4dbd' },
+    { key: 'training',     screen: 'training',      label: 'Training Records',          sub: 'Certs, equipment & alarm',         icon: '🎓', bg: '#e0f2fe', color: '#0369a1' },
+    { key: 'equipment',    screen: 'equipment',     label: 'Equipment Inventory',       sub: 'Lab equipment tracking',           icon: '🔧', bg: '#fef3c7', color: '#92400e', locked: true },
+    { key: 'equipmenthub', screen: 'equipmenthub',  label: 'Equipment',                 sub: 'Info, SOP & standards',            icon: '📚', bg: '#e8f2ee', color: '#1e4d39' },
+    { key: 'booking',      screen: 'booking',       label: 'Booking Equipment',         sub: 'Reserve lab equipment',            icon: '📅', bg: '#e0f2fe', color: '#0369a1' },
+    { key: 'mileage',      screen: null,            label: 'Mileage Form',              sub: 'Submit mileage reimbursement',     icon: '🚗', bg: '#fdf0ed', color: '#c84b2f', external: true },
+    { key: 'labsafety',    screen: null,            label: 'Lab Safety',                sub: 'Safety training & certification',  icon: '🦺', bg: '#fef3c7', color: '#92400e', external: true },
+    { key: 'remessages',   screen: 'remessages',    label: 'Contact Lab Manager (REs)', sub: 'Notes, ideas & issue reports',     icon: '💬', bg: '#e8f2ee', color: '#2a6049' },
+    { key: 'pm',           screen: 'pm',            label: 'Project Management',        sub: 'Tasks, meetings & team chat',      icon: '📋', bg: '#fff3e0', color: '#ff6b00', locked: true },
+    { key: 'profile',      screen: 'profile',       label: 'Profile',                   sub: 'Your info & settings',             icon: '👤', bg: '#f3eeff', color: '#7c4dbd' },
+    { key: 'supply_admin', screen: 'home',          label: 'Admin Tools',               sub: 'Rooms, supplies & settings',       icon: '⚙️', bg: '#f5f5f5', color: '#555', locked: true },
   ]
 }
 
@@ -60,7 +60,6 @@ function ExternalLinkModal({ url, onConfirm, onCancel }) {
   )
 }
 
-// Normal clickable card
 function ModuleCard({ m, onClick, imgUrl, isAdminManage }) {
   return (
     <div onClick={onClick}
@@ -80,29 +79,23 @@ function ModuleCard({ m, onClick, imgUrl, isAdminManage }) {
   )
 }
 
-// Blurred locked card shown to students for features they can't access
 function LockedCard({ m }) {
   return (
     <div style={{ borderRadius: 'var(--radius-lg)', overflow: 'hidden', border: '1px solid var(--border)', position: 'relative', height: 160, cursor: 'not-allowed' }}>
-      {/* Blurred background */}
       <div style={{ position: 'absolute', inset: 0, background: m.bg, filter: 'blur(2px)', opacity: 0.5 }} />
-      {/* Lock overlay */}
       <div style={{ position: 'absolute', inset: 0, background: 'rgba(255,255,255,0.55)', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 6 }}>
         <div style={{ fontSize: 22, filter: 'grayscale(1)', opacity: 0.4 }}>{m.icon}</div>
         <div style={{ fontSize: 13, fontWeight: 600, color: '#888' }}>{m.label}</div>
-        <div style={{ fontSize: 10, color: '#aaa', display: 'flex', alignItems: 'center', gap: 4 }}>
-          <span>🔒</span> Staff only
-        </div>
+        <div style={{ fontSize: 10, color: '#aaa', display: 'flex', alignItems: 'center', gap: 4 }}><span>🔒</span> Staff only</div>
       </div>
     </div>
   )
 }
 
-function CardGridView({ modules, onNavigate, mileageUrl, labSafetyUrl, isAdmin, onEditUrl, moduleImages, isStudent, studentUnlocked }) {
+function CardGridView({ modules, onNavigate, mileageUrl, labSafetyUrl, isAdmin, onEditUrl, moduleImages, isStudent }) {
   const [confirmExternal, setConfirmExternal] = useState(null)
 
   if (isStudent) {
-    // Show all modules — unlocked ones are clickable, locked ones are blurred
     const allMods = getAllModulesForStudent()
     return (
       <>
@@ -132,8 +125,8 @@ function CardGridView({ modules, onNavigate, mileageUrl, labSafetyUrl, isAdmin, 
             onClick={() => m.external ? setConfirmExternal({ url: m.key === 'mileage' ? mileageUrl : labSafetyUrl }) : onNavigate(m.screen)} />
         ))}
         {isAdmin && [
-          { key: 'mileage', icon: '🚗', label: 'Mileage Form', sub: 'Manage link', bg: '#fdf0ed', color: '#c84b2f' },
-          { key: 'labsafety', icon: '🦺', label: 'Lab Safety', sub: 'Manage link', bg: '#fef3c7', color: '#92400e' },
+          { key: 'mileage',   icon: '🚗', label: 'Mileage Form', sub: 'Manage link', bg: '#fdf0ed', color: '#c84b2f' },
+          { key: 'labsafety', icon: '🦺', label: 'Lab Safety',   sub: 'Manage link', bg: '#fef3c7', color: '#92400e' },
         ].map(card => (
           <ModuleCard key={card.key} m={card} imgUrl={moduleImages[card.key]} isAdminManage onClick={() => onEditUrl(card.key)} />
         ))}
@@ -151,13 +144,7 @@ function CardGridView({ modules, onNavigate, mileageUrl, labSafetyUrl, isAdmin, 
 // STUDENT DASHBOARD VIEW
 // ══════════════════════════════════════════════════════════════
 function StudentDashboardView({ session, onNavigate, mileageUrl, labSafetyUrl, moduleImages }) {
-  const [data, setData] = useState({
-    myProjects: 0,
-    trainingsComplete: 0,
-    trainingsTotal: 4,
-    upcomingBookings: [],
-    pendingCert: false,
-  })
+  const [data, setData] = useState({ myProjects: 0, trainingsComplete: 0, trainingsTotal: 4, upcomingBookings: [], pendingCert: false })
   const [loading, setLoading] = useState(true)
   const [confirmExternal, setConfirmExternal] = useState(null)
 
@@ -169,8 +156,7 @@ function StudentDashboardView({ session, onNavigate, mileageUrl, labSafetyUrl, m
       const userId = session.userId
       const userName = session.username
       const { data: projects } = await sb.from('projects').select('id, title, status')
-        .or(`students.cs.{"${userName}"},students.ilike.%${userName}%`)
-        .eq('status', 'active')
+        .or(`students.cs.{"${userName}"},students.ilike.%${userName}%`).eq('status', 'active')
       const [freshRes, golfRes, alarmRes, eqRes, pendingRes, bookingsRes] = await Promise.all([
         sb.from('training_fresh').select('id, admin_approved').eq('user_id', userId).maybeSingle(),
         sb.from('training_golf_car').select('id').eq('user_id', userId).maybeSingle(),
@@ -194,12 +180,12 @@ function StudentDashboardView({ session, onNavigate, mileageUrl, labSafetyUrl, m
   const trainingColor = trainingPct === 100 ? '#2a6049' : trainingPct >= 50 ? '#0369a1' : '#c84b2f'
 
   const quickLinks = [
-    { key: 'projects',    icon: '🧪', label: 'My Projects',       sub: 'View assigned projects',      screen: 'projects',    color: '#7c4dbd' },
-    { key: 'training',    icon: '🎓', label: 'Training Records',   sub: 'Check your certs',            screen: 'training',    color: '#0369a1' },
-    { key: 'booking',     icon: '📅', label: 'Book Equipment',     sub: 'Reserve lab equipment',       screen: 'booking',     color: '#0369a1' },
-    { key: 'equipmenthub',icon: '📚', label: 'Equipment Info',     sub: 'SOPs & standards',            screen: 'equipmenthub',color: '#1e4d39' },
-    { key: 'remessages',  icon: '💬', label: 'Contact Lab Manager',sub: 'Ask REs a question',          screen: 'remessages',  color: '#2a6049' },
-    { key: 'mileage',     icon: '🚗', label: 'Mileage Form',       sub: 'Submit reimbursement',        screen: null,          color: '#c84b2f', external: true },
+    { key: 'projects',    icon: '🧪', label: 'My Projects',        sub: 'View assigned projects',  screen: 'projects',     color: '#7c4dbd' },
+    { key: 'training',    icon: '🎓', label: 'Training Records',    sub: 'Check your certs',        screen: 'training',     color: '#0369a1' },
+    { key: 'booking',     icon: '📅', label: 'Book Equipment',      sub: 'Reserve lab equipment',   screen: 'booking',      color: '#0369a1' },
+    { key: 'equipmenthub',icon: '📚', label: 'Equipment Info',      sub: 'SOPs & standards',        screen: 'equipmenthub', color: '#1e4d39' },
+    { key: 'remessages',  icon: '💬', label: 'Contact Lab Manager', sub: 'Ask REs a question',      screen: 'remessages',   color: '#2a6049' },
+    { key: 'mileage',     icon: '🚗', label: 'Mileage Form',        sub: 'Submit reimbursement',    screen: null,           color: '#c84b2f', external: true },
   ]
 
   return (
@@ -208,31 +194,23 @@ function StudentDashboardView({ session, onNavigate, mileageUrl, labSafetyUrl, m
         <div>
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: 12, marginBottom: 20 }}>
             <div onClick={() => onNavigate('projects')} style={{ background: 'var(--surface)', border: '1px solid var(--border)', borderRadius: 'var(--radius-lg)', padding: '18px 20px', cursor: 'pointer', transition: 'all 0.15s' }}
-              onMouseEnter={e => e.currentTarget.style.borderColor = '#7c4dbd'}
-              onMouseLeave={e => e.currentTarget.style.borderColor = 'var(--border)'}>
+              onMouseEnter={e => e.currentTarget.style.borderColor = '#7c4dbd'} onMouseLeave={e => e.currentTarget.style.borderColor = 'var(--border)'}>
               <div style={{ fontSize: 28, fontWeight: 600, color: '#7c4dbd', marginBottom: 4 }}>{loading ? '—' : data.myProjects}</div>
               <div style={{ fontSize: 13, color: 'var(--text2)' }}>My active projects</div>
             </div>
             <div onClick={() => onNavigate('training')} style={{ background: 'var(--surface)', border: '1px solid var(--border)', borderRadius: 'var(--radius-lg)', padding: '18px 20px', cursor: 'pointer', transition: 'all 0.15s' }}
-              onMouseEnter={e => e.currentTarget.style.borderColor = trainingColor}
-              onMouseLeave={e => e.currentTarget.style.borderColor = 'var(--border)'}>
+              onMouseEnter={e => e.currentTarget.style.borderColor = trainingColor} onMouseLeave={e => e.currentTarget.style.borderColor = 'var(--border)'}>
               <div style={{ fontSize: 28, fontWeight: 600, color: trainingColor, marginBottom: 4 }}>{loading ? '—' : `${data.trainingsComplete}/${data.trainingsTotal}`}</div>
               <div style={{ fontSize: 13, color: 'var(--text2)', marginBottom: 8 }}>Trainings complete</div>
-              {!loading && (
-                <div style={{ height: 4, background: 'var(--surface2)', borderRadius: 99, overflow: 'hidden' }}>
-                  <div style={{ height: '100%', width: `${trainingPct}%`, background: trainingColor, borderRadius: 99, transition: 'width 0.6s' }} />
-                </div>
-              )}
+              {!loading && (<div style={{ height: 4, background: 'var(--surface2)', borderRadius: 99, overflow: 'hidden' }}><div style={{ height: '100%', width: `${trainingPct}%`, background: trainingColor, borderRadius: 99, transition: 'width 0.6s' }} /></div>)}
             </div>
             <div onClick={() => onNavigate('booking')} style={{ background: 'var(--surface)', border: '1px solid var(--border)', borderRadius: 'var(--radius-lg)', padding: '18px 20px', cursor: 'pointer', transition: 'all 0.15s' }}
-              onMouseEnter={e => e.currentTarget.style.borderColor = '#0369a1'}
-              onMouseLeave={e => e.currentTarget.style.borderColor = 'var(--border)'}>
+              onMouseEnter={e => e.currentTarget.style.borderColor = '#0369a1'} onMouseLeave={e => e.currentTarget.style.borderColor = 'var(--border)'}>
               <div style={{ fontSize: 28, fontWeight: 600, color: '#0369a1', marginBottom: 4 }}>{loading ? '—' : data.upcomingBookings.length}</div>
               <div style={{ fontSize: 13, color: 'var(--text2)' }}>Upcoming bookings</div>
             </div>
             <div onClick={() => onNavigate('training')} style={{ background: 'var(--surface)', border: '1px solid var(--border)', borderRadius: 'var(--radius-lg)', padding: '18px 20px', cursor: 'pointer', transition: 'all 0.15s' }}
-              onMouseEnter={e => e.currentTarget.style.borderColor = data.pendingCert ? '#c84b2f' : '#2a6049'}
-              onMouseLeave={e => e.currentTarget.style.borderColor = 'var(--border)'}>
+              onMouseEnter={e => e.currentTarget.style.borderColor = data.pendingCert ? '#c84b2f' : '#2a6049'} onMouseLeave={e => e.currentTarget.style.borderColor = 'var(--border)'}>
               <div style={{ fontSize: 24, marginBottom: 4 }}>{loading ? '—' : data.pendingCert ? '⏳' : '✅'}</div>
               <div style={{ fontSize: 13, color: 'var(--text2)' }}>{data.pendingCert ? 'Cert pending approval' : 'Cert up to date'}</div>
             </div>
@@ -283,15 +261,10 @@ function StudentDashboardView({ session, onNavigate, mileageUrl, labSafetyUrl, m
         <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
           <div style={{ fontSize: 12, fontWeight: 500, color: 'var(--text3)', fontFamily: 'var(--mono)', textTransform: 'uppercase', letterSpacing: '0.06em', marginBottom: 6 }}>Quick access</div>
           {quickLinks.map(m => (
-            <div key={m.key}
-              onClick={() => m.external ? setConfirmExternal({ url: mileageUrl }) : onNavigate(m.screen)}
+            <div key={m.key} onClick={() => m.external ? setConfirmExternal({ url: mileageUrl }) : onNavigate(m.screen)}
               style={{ borderRadius: 'var(--radius-lg)', overflow: 'hidden', cursor: 'pointer', height: 56, position: 'relative', border: '1px solid var(--border)', transition: 'all 0.15s' }}
-              onMouseEnter={e => e.currentTarget.style.borderColor = m.color}
-              onMouseLeave={e => e.currentTarget.style.borderColor = 'var(--border)'}>
-              {moduleImages[m.key]
-                ? (<><img src={moduleImages[m.key]} alt="" style={{ position: 'absolute', inset: 0, width: '100%', height: '100%', objectFit: 'cover' }} /><div style={{ position: 'absolute', inset: 0, background: 'linear-gradient(to right, rgba(0,0,0,0.65) 0%, rgba(0,0,0,0.2) 100%)' }} /></>)
-                : <div style={{ position: 'absolute', inset: 0, background: `${m.color}18` }} />
-              }
+              onMouseEnter={e => e.currentTarget.style.borderColor = m.color} onMouseLeave={e => e.currentTarget.style.borderColor = 'var(--border)'}>
+              {moduleImages[m.key] ? (<><img src={moduleImages[m.key]} alt="" style={{ position: 'absolute', inset: 0, width: '100%', height: '100%', objectFit: 'cover' }} /><div style={{ position: 'absolute', inset: 0, background: 'linear-gradient(to right, rgba(0,0,0,0.65) 0%, rgba(0,0,0,0.2) 100%)' }} /></>) : <div style={{ position: 'absolute', inset: 0, background: `${m.color}18` }} />}
               <div style={{ position: 'absolute', inset: 0, display: 'flex', alignItems: 'center', gap: 12, padding: '0 14px' }}>
                 <span style={{ fontSize: 18, flexShrink: 0 }}>{m.icon}</span>
                 <div style={{ flex: 1, minWidth: 0 }}>
@@ -310,7 +283,7 @@ function StudentDashboardView({ session, onNavigate, mileageUrl, labSafetyUrl, m
 }
 
 // ══════════════════════════════════════════════════════════════
-// ADMIN DASHBOARD VIEW
+// STAFF/SOLO DASHBOARD VIEW
 // ══════════════════════════════════════════════════════════════
 function DashboardView({ modules, onNavigate, session, mileageUrl, labSafetyUrl, isAdmin, onEditUrl, moduleImages }) {
   const [stats, setStats] = useState({ lowSupplies: 0, activeProjects: 0, students: 0, pendingTraining: 0 })
@@ -334,10 +307,10 @@ function DashboardView({ modules, onNavigate, session, mileageUrl, labSafetyUrl,
     setLoading(false)
   }
   const statCards = [
-    { label: 'Active projects',       value: stats.activeProjects, color: '#7c4dbd', bg: '#f3eeff', screen: 'projects' },
-    { label: 'Active students',        value: stats.students,       color: '#0369a1', bg: '#e0f2fe', screen: 'training' },
-    { label: 'Pending cert approvals', value: stats.pendingTraining,color: '#c84b2f', bg: '#fdf0ed', screen: 'training' },
-    { label: 'Supply items tracked',   value: stats.lowSupplies,   color: '#2a6049', bg: '#e8f2ee', screen: 'home'     },
+    { label: 'Active projects',        value: stats.activeProjects,  color: '#7c4dbd', bg: '#f3eeff', screen: 'projects' },
+    { label: 'Active students',         value: stats.students,        color: '#0369a1', bg: '#e0f2fe', screen: 'training' },
+    { label: 'Pending cert approvals',  value: stats.pendingTraining, color: '#c84b2f', bg: '#fdf0ed', screen: 'training' },
+    { label: 'Supply items tracked',    value: stats.lowSupplies,     color: '#2a6049', bg: '#e8f2ee', screen: 'home'     },
   ]
   return (
     <>
@@ -347,8 +320,7 @@ function DashboardView({ modules, onNavigate, session, mileageUrl, labSafetyUrl,
             {statCards.map(s => (
               <div key={s.label} onClick={() => onNavigate(s.screen)}
                 style={{ background: 'var(--surface)', border: '1px solid var(--border)', borderRadius: 'var(--radius-lg)', padding: '18px 20px', cursor: 'pointer', transition: 'all 0.15s' }}
-                onMouseEnter={e => e.currentTarget.style.borderColor = s.color}
-                onMouseLeave={e => e.currentTarget.style.borderColor = 'var(--border)'}>
+                onMouseEnter={e => e.currentTarget.style.borderColor = s.color} onMouseLeave={e => e.currentTarget.style.borderColor = 'var(--border)'}>
                 <div style={{ fontSize: 28, fontWeight: 600, color: s.color, marginBottom: 4 }}>{loading ? '—' : s.value}</div>
                 <div style={{ fontSize: 13, color: 'var(--text2)' }}>{s.label}</div>
               </div>
@@ -374,8 +346,7 @@ function DashboardView({ modules, onNavigate, session, mileageUrl, labSafetyUrl,
           {modules.map(m => (
             <div key={m.key} onClick={() => m.external ? setConfirmExternal({ url: m.key === 'mileage' ? mileageUrl : labSafetyUrl }) : onNavigate(m.screen)}
               style={{ borderRadius: 'var(--radius-lg)', overflow: 'hidden', cursor: 'pointer', height: 56, position: 'relative', border: '1px solid var(--border)', transition: 'all 0.15s' }}
-              onMouseEnter={e => e.currentTarget.style.borderColor = m.color}
-              onMouseLeave={e => e.currentTarget.style.borderColor = 'var(--border)'}>
+              onMouseEnter={e => e.currentTarget.style.borderColor = m.color} onMouseLeave={e => e.currentTarget.style.borderColor = 'var(--border)'}>
               {moduleImages[m.key] ? (<><img src={moduleImages[m.key]} alt="" style={{ position: 'absolute', inset: 0, width: '100%', height: '100%', objectFit: 'cover' }} /><div style={{ position: 'absolute', inset: 0, background: 'linear-gradient(to right, rgba(0,0,0,0.65) 0%, rgba(0,0,0,0.2) 100%)' }} /></>) : <div style={{ position: 'absolute', inset: 0, background: m.bg }} />}
               <div style={{ position: 'absolute', inset: 0, display: 'flex', alignItems: 'center', gap: 12, padding: '0 14px' }}>
                 {!moduleImages[m.key] && <span style={{ fontSize: 18, flexShrink: 0 }}>{m.icon}</span>}
@@ -394,6 +365,9 @@ function DashboardView({ modules, onNavigate, session, mileageUrl, labSafetyUrl,
   )
 }
 
+// ══════════════════════════════════════════════════════════════
+// MAIN DASHBOARD
+// ══════════════════════════════════════════════════════════════
 export default function Dashboard() {
   const { session, setScreen } = useAppStore()
   const [view, setView] = useState(() => localStorage.getItem('labstock_view') || 'grid')
@@ -404,9 +378,16 @@ export default function Dashboard() {
   const [savingUrl, setSavingUrl] = useState(false)
   const [userAccess, setUserAccess] = useState(null)
   const [moduleImages, setModuleImages] = useState({})
-  const isAdmin = session?.role === 'admin'
-  const isStudent = session?.role === 'student'
+  // activeModules: null = not loaded yet, [] = loaded but empty (show all), string[] = saved prefs
+  const [activeModules, setActiveModules] = useState(null)
+  const [prefsLoaded, setPrefsLoaded] = useState(false)
 
+  const isAdmin  = session?.role === 'admin'
+  const isStudent = session?.role === 'student'
+  const isSolo   = session?.loginMode === 'solo'
+  const loginMode = session?.loginMode || 'team'
+
+  // Load screen access for staff
   useEffect(() => {
     if (session?.userId && (session?.role === 'user' || session?.role === 'admin')) {
       sb.from('user_screen_access').select('screen_key').eq('user_id', session.userId)
@@ -414,8 +395,29 @@ export default function Dashboard() {
     }
   }, [session?.userId])
 
-  const allModules = getModules(session?.role)
-  const modules = userAccess ? allModules.filter(m => m.external || !m.screen || userAccess.has(m.screen) || m.screen === 'profile' || m.screen === 'dashboard' || m.screen === 'pm') : allModules
+  // Load dashboard icon prefs
+  useEffect(() => {
+    if (!session?.userId) { setPrefsLoaded(true); return }
+    loadDashboardPrefs()
+  }, [session?.userId])
+
+  async function loadDashboardPrefs() {
+    try {
+      if (isSolo) {
+        const { data } = await sb.from('solo_users').select('active_modules').eq('id', session.userId).maybeSingle()
+        setActiveModules(data?.active_modules?.length ? data.active_modules : null)
+      } else {
+        const { data } = await sb.from('user_dashboard_prefs').select('active_modules').eq('user_id', session.userId).maybeSingle()
+        setActiveModules(data?.active_modules?.length ? data.active_modules : null)
+      }
+    } catch(e) {}
+    setPrefsLoaded(true)
+  }
+
+  const allModules = getModules(session?.role, loginMode, activeModules)
+  const modules = userAccess
+    ? allModules.filter(m => m.external || !m.screen || userAccess.has(m.screen) || m.screen === 'profile' || m.screen === 'dashboard' || m.screen === 'pm')
+    : allModules
 
   useEffect(() => { loadSettings() }, [])
 
@@ -474,18 +476,10 @@ export default function Dashboard() {
         </div>
       </div>
 
-      {isStudent && view === 'dashboard' && (
-        <StudentDashboardView session={session} onNavigate={s => setScreen(s)} mileageUrl={mileageUrl} labSafetyUrl={labSafetyUrl} moduleImages={moduleImages} />
-      )}
-      {isStudent && view === 'grid' && (
-        <CardGridView modules={modules} onNavigate={s => setScreen(s)} mileageUrl={mileageUrl} labSafetyUrl={labSafetyUrl} isAdmin={false} onEditUrl={() => {}} moduleImages={moduleImages} isStudent={true} />
-      )}
-      {!isStudent && view === 'grid' && (
-        <CardGridView modules={modules} onNavigate={s => setScreen(s)} mileageUrl={mileageUrl} labSafetyUrl={labSafetyUrl} isAdmin={isAdmin} onEditUrl={(type) => { setEditingUrl(type); setUrlInput(type === 'mileage' ? mileageUrl : labSafetyUrl) }} moduleImages={moduleImages} isStudent={false} />
-      )}
-      {!isStudent && view === 'dashboard' && (
-        <DashboardView modules={modules} onNavigate={s => setScreen(s)} session={session} mileageUrl={mileageUrl} labSafetyUrl={labSafetyUrl} isAdmin={isAdmin} onEditUrl={(type) => { setEditingUrl(type); setUrlInput(type === 'mileage' ? mileageUrl : labSafetyUrl) }} moduleImages={moduleImages} />
-      )}
+      {isStudent && view === 'dashboard' && (<StudentDashboardView session={session} onNavigate={s => setScreen(s)} mileageUrl={mileageUrl} labSafetyUrl={labSafetyUrl} moduleImages={moduleImages} />)}
+      {isStudent && view === 'grid'      && (<CardGridView modules={modules} onNavigate={s => setScreen(s)} mileageUrl={mileageUrl} labSafetyUrl={labSafetyUrl} isAdmin={false} onEditUrl={() => {}} moduleImages={moduleImages} isStudent={true} />)}
+      {!isStudent && view === 'grid'     && (<CardGridView modules={modules} onNavigate={s => setScreen(s)} mileageUrl={mileageUrl} labSafetyUrl={labSafetyUrl} isAdmin={isAdmin} onEditUrl={(type) => { setEditingUrl(type); setUrlInput(type === 'mileage' ? mileageUrl : labSafetyUrl) }} moduleImages={moduleImages} isStudent={false} />)}
+      {!isStudent && view === 'dashboard' && (<DashboardView modules={modules} onNavigate={s => setScreen(s)} session={session} mileageUrl={mileageUrl} labSafetyUrl={labSafetyUrl} isAdmin={isAdmin} onEditUrl={(type) => { setEditingUrl(type); setUrlInput(type === 'mileage' ? mileageUrl : labSafetyUrl) }} moduleImages={moduleImages} />)}
 
       {editingUrl !== null && (
         <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.4)', zIndex: 300, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 20 }}>
