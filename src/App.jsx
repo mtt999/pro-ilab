@@ -24,7 +24,7 @@ export default function App() {
   const { session, screen, refreshCache, setScreen } = useAppStore()
   const [loading, setLoading] = useState(true)
   const [userAccess, setUserAccess] = useState(null)
-  // null = not checked yet, false = not needed, true = show picker
+  // null = not checked yet, false = hide, true = show picker
   const [showIconPicker, setShowIconPicker] = useState(null)
 
   useEffect(() => {
@@ -45,30 +45,32 @@ export default function App() {
     }
   }, [session])
 
-  // Check first login — depend on BOTH userId AND loginMode so it re-runs correctly
+  // Fire whenever loginMode becomes available — userId can be null (admin)
   useEffect(() => {
-    if (!session?.userId || !session?.loginMode) {
-      setShowIconPicker(false)
-      return
-    }
+    if (!session?.loginMode) { setShowIconPicker(false); return }
     checkFirstLogin(session.userId, session.loginMode)
-  }, [session?.userId, session?.loginMode])
+  }, [session?.loginMode, session?.userId])
 
   async function checkFirstLogin(userId, loginMode) {
     try {
+      // Admin has no userId — use localStorage as fallback
+      if (!userId) {
+        const done = localStorage.getItem('ilab_admin_dashboard_set') === 'true'
+        setShowIconPicker(!done)
+        return
+      }
+
       if (loginMode === 'solo') {
         const { data } = await sb.from('solo_users')
           .select('has_set_dashboard')
           .eq('id', userId)
           .maybeSingle()
-        // Show picker if: no row, row with NULL, or row with false
         setShowIconPicker(data?.has_set_dashboard !== true)
       } else {
         const { data } = await sb.from('user_dashboard_prefs')
           .select('has_set_dashboard')
           .eq('user_id', userId)
           .maybeSingle()
-        // Show picker if: no row, row with NULL, or row with false
         setShowIconPicker(data?.has_set_dashboard !== true)
       }
     } catch (e) {
@@ -134,12 +136,18 @@ export default function App() {
     <>
       <Layout>{screens[screen] || <Dashboard />}</Layout>
       <Toast />
-      {/* First-login dashboard icon picker — shown until user saves their prefs */}
-      {showIconPicker === true && session?.userId && (
+      {/* First-login dashboard icon picker */}
+      {showIconPicker === true && (
         <DashboardIconPicker
           session={session}
           loginMode={session.loginMode}
-          onDone={() => setShowIconPicker(false)}
+          onDone={() => {
+            // Admin fallback: mark done in localStorage
+            if (!session.userId) {
+              localStorage.setItem('ilab_admin_dashboard_set', 'true')
+            }
+            setShowIconPicker(false)
+          }}
         />
       )}
     </>
