@@ -4,7 +4,6 @@ import { useAppStore } from '../store/useAppStore'
 import { ALL_MODULES_META, PINNED_MODULES } from '../components/DashboardIconPicker'
 import DashboardIconPicker from '../components/DashboardIconPicker'
 
-// Build the visible module list for a user based on their role + saved prefs
 function getModules(role, loginMode, activeModules) {
   const roleKey = loginMode === 'solo' ? 'solo' : 'team'
   const studentAllowed = ['projects','training','booking','equipmenthub','mileage','labsafety','remessages','profile']
@@ -54,17 +53,23 @@ function ExternalLinkModal({ url, onConfirm, onCancel }) {
   )
 }
 
+// pointerEvents: 'none' on ALL inner divs so clicks always reach the outer onClick
 function ModuleCard({ m, onClick, imgUrl, isAdminManage }) {
   return (
-    <div onClick={onClick}
+    <div
+      onClick={onClick}
       style={{ borderRadius: 'var(--radius-lg)', overflow: 'hidden', cursor: 'pointer', border: isAdminManage ? '1px dashed var(--border)' : '1px solid var(--border)', transition: 'all 0.15s', position: 'relative', height: 160 }}
       onMouseEnter={e => { e.currentTarget.style.transform = 'translateY(-2px)'; e.currentTarget.style.boxShadow = '0 4px 16px rgba(0,0,0,0.12)' }}
-      onMouseLeave={e => { e.currentTarget.style.transform = 'translateY(0)'; e.currentTarget.style.boxShadow = 'none' }}>
-      {imgUrl ? <img src={imgUrl} alt="" style={{ position: 'absolute', inset: 0, width: '100%', height: '100%', objectFit: 'cover' }} /> : <div style={{ position: 'absolute', inset: 0, background: m.bg }} />}
-      <div style={{ position: 'absolute', inset: 0, background: imgUrl ? 'linear-gradient(to top, rgba(0,0,0,0.72) 40%, rgba(0,0,0,0.1) 100%)' : 'linear-gradient(to top, rgba(0,0,0,0.15) 0%, transparent 100%)' }} />
-      {m.external && <div style={{ position: 'absolute', top: 10, right: 10, background: 'rgba(0,0,0,0.4)', color: '#fff', fontSize: 10, borderRadius: 4, padding: '2px 6px' }}>↗ External</div>}
-      {isAdminManage && <div style={{ position: 'absolute', top: 10, right: 10, background: m.color, color: '#fff', fontSize: 10, borderRadius: 4, padding: '2px 8px', fontWeight: 600 }}>⚙ Edit</div>}
-      <div style={{ position: 'absolute', bottom: 0, left: 0, right: 0, padding: '12px 14px' }}>
+      onMouseLeave={e => { e.currentTarget.style.transform = 'translateY(0)'; e.currentTarget.style.boxShadow = 'none' }}
+    >
+      {imgUrl
+        ? <img src={imgUrl} alt="" style={{ position: 'absolute', inset: 0, width: '100%', height: '100%', objectFit: 'cover', pointerEvents: 'none' }} />
+        : <div style={{ position: 'absolute', inset: 0, background: m.bg, pointerEvents: 'none' }} />
+      }
+      <div style={{ position: 'absolute', inset: 0, background: imgUrl ? 'linear-gradient(to top, rgba(0,0,0,0.72) 40%, rgba(0,0,0,0.1) 100%)' : 'linear-gradient(to top, rgba(0,0,0,0.15) 0%, transparent 100%)', pointerEvents: 'none' }} />
+      {m.external && <div style={{ position: 'absolute', top: 10, right: 10, background: 'rgba(0,0,0,0.4)', color: '#fff', fontSize: 10, borderRadius: 4, padding: '2px 6px', pointerEvents: 'none' }}>↗ External</div>}
+      {isAdminManage && <div style={{ position: 'absolute', top: 10, right: 10, background: m.color, color: '#fff', fontSize: 10, borderRadius: 4, padding: '2px 8px', fontWeight: 600, pointerEvents: 'none' }}>⚙ Edit</div>}
+      <div style={{ position: 'absolute', bottom: 0, left: 0, right: 0, padding: '12px 14px', pointerEvents: 'none' }}>
         {!imgUrl && <div style={{ fontSize: 28, marginBottom: 6 }}>{m.icon}</div>}
         <div style={{ fontWeight: 700, fontSize: 14, color: imgUrl ? '#fff' : m.color, textShadow: imgUrl ? '0 1px 3px rgba(0,0,0,0.5)' : 'none', marginBottom: 2 }}>{m.label}</div>
         <div style={{ fontSize: 11, color: imgUrl ? 'rgba(255,255,255,0.82)' : m.color, opacity: imgUrl ? 1 : 0.75, textShadow: imgUrl ? '0 1px 2px rgba(0,0,0,0.4)' : 'none' }}>{isAdminManage ? 'Click to manage link' : m.sub}</div>
@@ -76,8 +81,8 @@ function ModuleCard({ m, onClick, imgUrl, isAdminManage }) {
 function LockedCard({ m }) {
   return (
     <div style={{ borderRadius: 'var(--radius-lg)', overflow: 'hidden', border: '1px solid var(--border)', position: 'relative', height: 160, cursor: 'not-allowed' }}>
-      <div style={{ position: 'absolute', inset: 0, background: m.bg, filter: 'blur(2px)', opacity: 0.5 }} />
-      <div style={{ position: 'absolute', inset: 0, background: 'rgba(255,255,255,0.55)', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 6 }}>
+      <div style={{ position: 'absolute', inset: 0, background: m.bg, filter: 'blur(2px)', opacity: 0.5, pointerEvents: 'none' }} />
+      <div style={{ position: 'absolute', inset: 0, background: 'rgba(255,255,255,0.55)', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 6, pointerEvents: 'none' }}>
         <div style={{ fontSize: 22, filter: 'grayscale(1)', opacity: 0.4 }}>{m.icon}</div>
         <div style={{ fontSize: 13, fontWeight: 600, color: '#888' }}>{m.label}</div>
         <div style={{ fontSize: 10, color: '#aaa', display: 'flex', alignItems: 'center', gap: 4 }}><span>🔒</span> Staff only</div>
@@ -102,11 +107,7 @@ function CardGridView({ modules, onNavigate, mileageUrl, labSafetyUrl, isAdmin, 
             )
           })}
         </div>
-        {confirmExternal && (
-          <ExternalLinkModal url={confirmExternal.url}
-            onConfirm={() => { window.open(confirmExternal.url, '_blank'); setConfirmExternal(null) }}
-            onCancel={() => setConfirmExternal(null)} />
-        )}
+        {confirmExternal && <ExternalLinkModal url={confirmExternal.url} onConfirm={() => { window.open(confirmExternal.url, '_blank'); setConfirmExternal(null) }} onCancel={() => setConfirmExternal(null)} />}
       </>
     )
   }
@@ -125,11 +126,7 @@ function CardGridView({ modules, onNavigate, mileageUrl, labSafetyUrl, isAdmin, 
           <ModuleCard key={card.key} m={card} imgUrl={moduleImages[card.key]} isAdminManage onClick={() => onEditUrl(card.key)} />
         ))}
       </div>
-      {confirmExternal && (
-        <ExternalLinkModal url={confirmExternal.url}
-          onConfirm={() => { window.open(confirmExternal.url, '_blank'); setConfirmExternal(null) }}
-          onCancel={() => setConfirmExternal(null)} />
-      )}
+      {confirmExternal && <ExternalLinkModal url={confirmExternal.url} onConfirm={() => { window.open(confirmExternal.url, '_blank'); setConfirmExternal(null) }} onCancel={() => setConfirmExternal(null)} />}
     </>
   )
 }
@@ -169,7 +166,6 @@ function StudentDashboardView({ session, onNavigate, mileageUrl, labSafetyUrl, m
 
   const trainingPct = Math.round((data.trainingsComplete / data.trainingsTotal) * 100)
   const trainingColor = trainingPct === 100 ? '#2a6049' : trainingPct >= 50 ? '#0369a1' : '#c84b2f'
-
   const quickLinks = [
     { key: 'projects',    icon: '🧪', label: 'My Projects',        sub: 'View assigned projects',  screen: 'projects',     color: '#7c4dbd' },
     { key: 'training',    icon: '🎓', label: 'Training Records',    sub: 'Check your certs',        screen: 'training',     color: '#0369a1' },
@@ -184,24 +180,20 @@ function StudentDashboardView({ session, onNavigate, mileageUrl, labSafetyUrl, m
       <div style={{ display: 'grid', gridTemplateColumns: '1fr 260px', gap: 20, alignItems: 'start' }}>
         <div>
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: 12, marginBottom: 20 }}>
-            <div onClick={() => onNavigate('projects')} style={{ background: 'var(--surface)', border: '1px solid var(--border)', borderRadius: 'var(--radius-lg)', padding: '18px 20px', cursor: 'pointer', transition: 'all 0.15s' }}
-              onMouseEnter={e => e.currentTarget.style.borderColor = '#7c4dbd'} onMouseLeave={e => e.currentTarget.style.borderColor = 'var(--border)'}>
+            <div onClick={() => onNavigate('projects')} style={{ background: 'var(--surface)', border: '1px solid var(--border)', borderRadius: 'var(--radius-lg)', padding: '18px 20px', cursor: 'pointer', transition: 'all 0.15s' }} onMouseEnter={e => e.currentTarget.style.borderColor = '#7c4dbd'} onMouseLeave={e => e.currentTarget.style.borderColor = 'var(--border)'}>
               <div style={{ fontSize: 28, fontWeight: 600, color: '#7c4dbd', marginBottom: 4 }}>{loading ? '—' : data.myProjects}</div>
               <div style={{ fontSize: 13, color: 'var(--text2)' }}>My active projects</div>
             </div>
-            <div onClick={() => onNavigate('training')} style={{ background: 'var(--surface)', border: '1px solid var(--border)', borderRadius: 'var(--radius-lg)', padding: '18px 20px', cursor: 'pointer', transition: 'all 0.15s' }}
-              onMouseEnter={e => e.currentTarget.style.borderColor = trainingColor} onMouseLeave={e => e.currentTarget.style.borderColor = 'var(--border)'}>
+            <div onClick={() => onNavigate('training')} style={{ background: 'var(--surface)', border: '1px solid var(--border)', borderRadius: 'var(--radius-lg)', padding: '18px 20px', cursor: 'pointer', transition: 'all 0.15s' }} onMouseEnter={e => e.currentTarget.style.borderColor = trainingColor} onMouseLeave={e => e.currentTarget.style.borderColor = 'var(--border)'}>
               <div style={{ fontSize: 28, fontWeight: 600, color: trainingColor, marginBottom: 4 }}>{loading ? '—' : `${data.trainingsComplete}/${data.trainingsTotal}`}</div>
               <div style={{ fontSize: 13, color: 'var(--text2)', marginBottom: 8 }}>Trainings complete</div>
               {!loading && (<div style={{ height: 4, background: 'var(--surface2)', borderRadius: 99, overflow: 'hidden' }}><div style={{ height: '100%', width: `${trainingPct}%`, background: trainingColor, borderRadius: 99, transition: 'width 0.6s' }} /></div>)}
             </div>
-            <div onClick={() => onNavigate('booking')} style={{ background: 'var(--surface)', border: '1px solid var(--border)', borderRadius: 'var(--radius-lg)', padding: '18px 20px', cursor: 'pointer', transition: 'all 0.15s' }}
-              onMouseEnter={e => e.currentTarget.style.borderColor = '#0369a1'} onMouseLeave={e => e.currentTarget.style.borderColor = 'var(--border)'}>
+            <div onClick={() => onNavigate('booking')} style={{ background: 'var(--surface)', border: '1px solid var(--border)', borderRadius: 'var(--radius-lg)', padding: '18px 20px', cursor: 'pointer', transition: 'all 0.15s' }} onMouseEnter={e => e.currentTarget.style.borderColor = '#0369a1'} onMouseLeave={e => e.currentTarget.style.borderColor = 'var(--border)'}>
               <div style={{ fontSize: 28, fontWeight: 600, color: '#0369a1', marginBottom: 4 }}>{loading ? '—' : data.upcomingBookings.length}</div>
               <div style={{ fontSize: 13, color: 'var(--text2)' }}>Upcoming bookings</div>
             </div>
-            <div onClick={() => onNavigate('training')} style={{ background: 'var(--surface)', border: '1px solid var(--border)', borderRadius: 'var(--radius-lg)', padding: '18px 20px', cursor: 'pointer', transition: 'all 0.15s' }}
-              onMouseEnter={e => e.currentTarget.style.borderColor = data.pendingCert ? '#c84b2f' : '#2a6049'} onMouseLeave={e => e.currentTarget.style.borderColor = 'var(--border)'}>
+            <div onClick={() => onNavigate('training')} style={{ background: 'var(--surface)', border: '1px solid var(--border)', borderRadius: 'var(--radius-lg)', padding: '18px 20px', cursor: 'pointer', transition: 'all 0.15s' }} onMouseEnter={e => e.currentTarget.style.borderColor = data.pendingCert ? '#c84b2f' : '#2a6049'} onMouseLeave={e => e.currentTarget.style.borderColor = 'var(--border)'}>
               <div style={{ fontSize: 24, marginBottom: 4 }}>{loading ? '—' : data.pendingCert ? '⏳' : '✅'}</div>
               <div style={{ fontSize: 13, color: 'var(--text2)' }}>{data.pendingCert ? 'Cert pending approval' : 'Cert up to date'}</div>
             </div>
@@ -255,8 +247,8 @@ function StudentDashboardView({ session, onNavigate, mileageUrl, labSafetyUrl, m
             <div key={m.key} onClick={() => m.external ? setConfirmExternal({ url: mileageUrl }) : onNavigate(m.screen)}
               style={{ borderRadius: 'var(--radius-lg)', overflow: 'hidden', cursor: 'pointer', height: 56, position: 'relative', border: '1px solid var(--border)', transition: 'all 0.15s' }}
               onMouseEnter={e => e.currentTarget.style.borderColor = m.color} onMouseLeave={e => e.currentTarget.style.borderColor = 'var(--border)'}>
-              {moduleImages[m.key] ? (<><img src={moduleImages[m.key]} alt="" style={{ position: 'absolute', inset: 0, width: '100%', height: '100%', objectFit: 'cover' }} /><div style={{ position: 'absolute', inset: 0, background: 'linear-gradient(to right, rgba(0,0,0,0.65) 0%, rgba(0,0,0,0.2) 100%)' }} /></>) : <div style={{ position: 'absolute', inset: 0, background: `${m.color}18` }} />}
-              <div style={{ position: 'absolute', inset: 0, display: 'flex', alignItems: 'center', gap: 12, padding: '0 14px' }}>
+              {moduleImages[m.key] ? (<><img src={moduleImages[m.key]} alt="" style={{ position: 'absolute', inset: 0, width: '100%', height: '100%', objectFit: 'cover', pointerEvents: 'none' }} /><div style={{ position: 'absolute', inset: 0, background: 'linear-gradient(to right, rgba(0,0,0,0.65) 0%, rgba(0,0,0,0.2) 100%)', pointerEvents: 'none' }} /></>) : <div style={{ position: 'absolute', inset: 0, background: `${m.color}18`, pointerEvents: 'none' }} />}
+              <div style={{ position: 'absolute', inset: 0, display: 'flex', alignItems: 'center', gap: 12, padding: '0 14px', pointerEvents: 'none' }}>
                 <span style={{ fontSize: 18, flexShrink: 0 }}>{m.icon}</span>
                 <div style={{ flex: 1, minWidth: 0 }}>
                   <div style={{ fontSize: 13, fontWeight: 600, color: moduleImages[m.key] ? '#fff' : 'var(--text)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{m.label}</div>
@@ -295,10 +287,10 @@ function DashboardView({ modules, onNavigate, session, mileageUrl, labSafetyUrl,
     setLoading(false)
   }
   const statCards = [
-    { label: 'Active projects',        value: stats.activeProjects,  color: '#7c4dbd', bg: '#f3eeff', screen: 'projects' },
-    { label: 'Active students',         value: stats.students,        color: '#0369a1', bg: '#e0f2fe', screen: 'training' },
-    { label: 'Pending cert approvals',  value: stats.pendingTraining, color: '#c84b2f', bg: '#fdf0ed', screen: 'training' },
-    { label: 'Supply items tracked',    value: stats.lowSupplies,     color: '#2a6049', bg: '#e8f2ee', screen: 'home'     },
+    { label: 'Active projects',       value: stats.activeProjects,  color: '#7c4dbd', screen: 'projects' },
+    { label: 'Active students',        value: stats.students,        color: '#0369a1', screen: 'training' },
+    { label: 'Pending cert approvals', value: stats.pendingTraining, color: '#c84b2f', screen: 'training' },
+    { label: 'Supply items tracked',   value: stats.lowSupplies,     color: '#2a6049', screen: 'home'     },
   ]
   return (
     <>
@@ -335,8 +327,8 @@ function DashboardView({ modules, onNavigate, session, mileageUrl, labSafetyUrl,
             <div key={m.key} onClick={() => m.external ? setConfirmExternal({ url: m.key === 'mileage' ? mileageUrl : labSafetyUrl }) : onNavigate(m.screen)}
               style={{ borderRadius: 'var(--radius-lg)', overflow: 'hidden', cursor: 'pointer', height: 56, position: 'relative', border: '1px solid var(--border)', transition: 'all 0.15s' }}
               onMouseEnter={e => e.currentTarget.style.borderColor = m.color} onMouseLeave={e => e.currentTarget.style.borderColor = 'var(--border)'}>
-              {moduleImages[m.key] ? (<><img src={moduleImages[m.key]} alt="" style={{ position: 'absolute', inset: 0, width: '100%', height: '100%', objectFit: 'cover' }} /><div style={{ position: 'absolute', inset: 0, background: 'linear-gradient(to right, rgba(0,0,0,0.65) 0%, rgba(0,0,0,0.2) 100%)' }} /></>) : <div style={{ position: 'absolute', inset: 0, background: m.bg }} />}
-              <div style={{ position: 'absolute', inset: 0, display: 'flex', alignItems: 'center', gap: 12, padding: '0 14px' }}>
+              {moduleImages[m.key] ? (<><img src={moduleImages[m.key]} alt="" style={{ position: 'absolute', inset: 0, width: '100%', height: '100%', objectFit: 'cover', pointerEvents: 'none' }} /><div style={{ position: 'absolute', inset: 0, background: 'linear-gradient(to right, rgba(0,0,0,0.65) 0%, rgba(0,0,0,0.2) 100%)', pointerEvents: 'none' }} /></>) : <div style={{ position: 'absolute', inset: 0, background: m.bg, pointerEvents: 'none' }} />}
+              <div style={{ position: 'absolute', inset: 0, display: 'flex', alignItems: 'center', gap: 12, padding: '0 14px', pointerEvents: 'none' }}>
                 {!moduleImages[m.key] && <span style={{ fontSize: 18, flexShrink: 0 }}>{m.icon}</span>}
                 <div style={{ flex: 1, minWidth: 0 }}>
                   <div style={{ fontSize: 13, fontWeight: 600, color: moduleImages[m.key] ? '#fff' : 'var(--text)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{m.label}</div>
@@ -353,9 +345,6 @@ function DashboardView({ modules, onNavigate, session, mileageUrl, labSafetyUrl,
   )
 }
 
-// ══════════════════════════════════════════════════════════════
-// MAIN DASHBOARD
-// ══════════════════════════════════════════════════════════════
 export default function Dashboard() {
   const { session, setScreen } = useAppStore()
   const [view, setView] = useState(() => localStorage.getItem('labstock_view') || 'grid')
@@ -367,7 +356,7 @@ export default function Dashboard() {
   const [userAccess, setUserAccess] = useState(null)
   const [moduleImages, setModuleImages] = useState({})
   const [activeModules, setActiveModules] = useState(null)
-  const [showPicker, setShowPicker] = useState(false)  // ← manual picker toggle
+  const [showPicker, setShowPicker] = useState(false)
 
   const isAdmin   = session?.role === 'admin'
   const isStudent = session?.role === 'student'
@@ -444,14 +433,11 @@ export default function Dashboard() {
           <div style={{ fontSize: 13, color: 'var(--text3)', fontFamily: 'var(--mono)' }}>{dateStr} · ICT Lab</div>
         </div>
         <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
-          {/* 🎛️ Customize Icons button — always visible, opens picker directly */}
           {!isStudent && (
-            <button
-              onClick={() => setShowPicker(true)}
+            <button onClick={() => setShowPicker(true)}
               style={{ padding: '6px 14px', border: '1px solid var(--border)', borderRadius: 8, background: 'var(--surface)', fontFamily: 'var(--sans)', fontSize: 13, fontWeight: 500, cursor: 'pointer', color: 'var(--text2)', display: 'flex', alignItems: 'center', gap: 6, transition: 'all 0.15s' }}
               onMouseEnter={e => { e.currentTarget.style.borderColor = 'var(--accent)'; e.currentTarget.style.color = 'var(--accent)' }}
-              onMouseLeave={e => { e.currentTarget.style.borderColor = 'var(--border)'; e.currentTarget.style.color = 'var(--text2)' }}
-            >
+              onMouseLeave={e => { e.currentTarget.style.borderColor = 'var(--border)'; e.currentTarget.style.color = 'var(--text2)' }}>
               🎛️ Customize
             </button>
           )}
@@ -470,12 +456,11 @@ export default function Dashboard() {
         </div>
       </div>
 
-      {isStudent && view === 'dashboard' && (<StudentDashboardView session={session} onNavigate={s => setScreen(s)} mileageUrl={mileageUrl} labSafetyUrl={labSafetyUrl} moduleImages={moduleImages} />)}
-      {isStudent && view === 'grid'      && (<CardGridView modules={modules} onNavigate={s => setScreen(s)} mileageUrl={mileageUrl} labSafetyUrl={labSafetyUrl} isAdmin={false} onEditUrl={() => {}} moduleImages={moduleImages} isStudent={true} />)}
-      {!isStudent && view === 'grid'     && (<CardGridView modules={modules} onNavigate={s => setScreen(s)} mileageUrl={mileageUrl} labSafetyUrl={labSafetyUrl} isAdmin={isAdmin} onEditUrl={(type) => { setEditingUrl(type); setUrlInput(type === 'mileage' ? mileageUrl : labSafetyUrl) }} moduleImages={moduleImages} isStudent={false} />)}
-      {!isStudent && view === 'dashboard' && (<DashboardView modules={modules} onNavigate={s => setScreen(s)} session={session} mileageUrl={mileageUrl} labSafetyUrl={labSafetyUrl} isAdmin={isAdmin} onEditUrl={(type) => { setEditingUrl(type); setUrlInput(type === 'mileage' ? mileageUrl : labSafetyUrl) }} moduleImages={moduleImages} />)}
+      {isStudent && view === 'dashboard' && <StudentDashboardView session={session} onNavigate={s => setScreen(s)} mileageUrl={mileageUrl} labSafetyUrl={labSafetyUrl} moduleImages={moduleImages} />}
+      {isStudent && view === 'grid'      && <CardGridView modules={modules} onNavigate={s => setScreen(s)} mileageUrl={mileageUrl} labSafetyUrl={labSafetyUrl} isAdmin={false} onEditUrl={() => {}} moduleImages={moduleImages} isStudent={true} />}
+      {!isStudent && view === 'grid'     && <CardGridView modules={modules} onNavigate={s => setScreen(s)} mileageUrl={mileageUrl} labSafetyUrl={labSafetyUrl} isAdmin={isAdmin} onEditUrl={(type) => { setEditingUrl(type); setUrlInput(type === 'mileage' ? mileageUrl : labSafetyUrl) }} moduleImages={moduleImages} isStudent={false} />}
+      {!isStudent && view === 'dashboard' && <DashboardView modules={modules} onNavigate={s => setScreen(s)} session={session} mileageUrl={mileageUrl} labSafetyUrl={labSafetyUrl} isAdmin={isAdmin} onEditUrl={(type) => { setEditingUrl(type); setUrlInput(type === 'mileage' ? mileageUrl : labSafetyUrl) }} moduleImages={moduleImages} />}
 
-      {/* Icon picker — opened via Customize button */}
       {showPicker && (
         <DashboardIconPicker
           session={session}
