@@ -1,19 +1,19 @@
 import { useState, useEffect } from 'react'
 import { sb } from '../lib/supabase'
 
+// All 11 icons available to BOTH solo and team
 export const ALL_MODULES_META = [
-  { key: 'supply',          screen: 'home',            label: 'Supply Inventory',       sub: 'Weekly inspection & export',      icon: '📦', bg: '#e8f2ee', color: '#2a6049', roles: ['team'] },
-  { key: 'projects',        screen: 'projects',        label: 'Project Inventory',      sub: 'Materials, storage & database',   icon: '🧪', bg: '#f3eeff', color: '#7c4dbd', roles: ['team', 'solo'] },
-  { key: 'training',        screen: 'training',        label: 'Training Records',       sub: 'Certs, equipment & alarm',        icon: '🎓', bg: '#e0f2fe', color: '#0369a1', roles: ['team'] },
-  { key: 'equipment',       screen: 'equipment',       label: 'Equipment Inventory',    sub: 'Lab equipment tracking',          icon: '🔧', bg: '#fef3c7', color: '#92400e', roles: ['team'] },
-  { key: 'equipmenthub',    screen: 'equipmenthub',    label: 'Equipment Info',         sub: 'SOPs & standards',                icon: '📚', bg: '#e8f2ee', color: '#1e4d39', roles: ['team', 'solo'] },
-  { key: 'booking',         screen: 'booking',         label: 'Booking Equipment',      sub: 'Reserve lab equipment',           icon: '📅', bg: '#e0f2fe', color: '#0369a1', roles: ['team', 'solo'] },
-  { key: 'mileage',         screen: null,              label: 'Mileage Form',           sub: 'Submit mileage reimbursement',    icon: '🚗', bg: '#fdf0ed', color: '#c84b2f', roles: ['team', 'solo'], external: true },
-  { key: 'labsafety',       screen: null,              label: 'Lab Safety',             sub: 'Safety training & certification', icon: '🦺', bg: '#fef3c7', color: '#92400e', roles: ['team', 'solo'], external: true },
-  { key: 'remessages',      screen: 'remessages',      label: 'Contact Lab Manager',    sub: 'Notes, ideas & issue reports',    icon: '💬', bg: '#e8f2ee', color: '#2a6049', roles: ['team'] },
-  { key: 'pm',              screen: 'pm',              label: 'Project Management',     sub: 'Tasks, meetings & team chat',     icon: '📋', bg: '#fff3e0', color: '#ff6b00', roles: ['team', 'solo'] },
-  { key: 'profile',         screen: 'profile',         label: 'Profile',                sub: 'Your info & settings',            icon: '👤', bg: '#f3eeff', color: '#7c4dbd', roles: ['team', 'solo'] },
-  { key: 'materialstorage', screen: 'materialstorage', label: 'Material Storage',       sub: 'Store & track materials',         icon: '🗄️', bg: '#e8f2ee', color: '#1e4d39', roles: ['solo'] },
+  { key: 'supply',       screen: 'home',         label: 'Supply Inventory',    sub: 'Weekly inspection & export',      icon: '📦', bg: '#e8f2ee', color: '#2a6049', roles: ['team', 'solo'] },
+  { key: 'projects',     screen: 'projects',     label: 'Project Inventory',   sub: 'Materials, storage & database',   icon: '🧪', bg: '#f3eeff', color: '#7c4dbd', roles: ['team', 'solo'] },
+  { key: 'training',     screen: 'training',     label: 'Training Records',    sub: 'Certs, equipment & alarm',        icon: '🎓', bg: '#e0f2fe', color: '#0369a1', roles: ['team', 'solo'] },
+  { key: 'equipment',    screen: 'equipment',    label: 'Equipment Inventory', sub: 'Lab equipment tracking',          icon: '🔧', bg: '#fef3c7', color: '#92400e', roles: ['team', 'solo'] },
+  { key: 'equipmenthub', screen: 'equipmenthub', label: 'Equipment Info',      sub: 'SOPs & standards',                icon: '📚', bg: '#e8f2ee', color: '#1e4d39', roles: ['team', 'solo'] },
+  { key: 'booking',      screen: 'booking',      label: 'Booking Equipment',   sub: 'Reserve lab equipment',           icon: '📅', bg: '#e0f2fe', color: '#0369a1', roles: ['team', 'solo'] },
+  { key: 'remessages',   screen: 'remessages',   label: 'Contact Lab Manager', sub: 'Notes, ideas & issue reports',    icon: '💬', bg: '#e8f2ee', color: '#2a6049', roles: ['team', 'solo'] },
+  { key: 'pm',           screen: 'pm',           label: 'Project Management',  sub: 'Tasks, meetings & team chat',     icon: '📋', bg: '#fff3e0', color: '#ff6b00', roles: ['team', 'solo'] },
+  { key: 'mileage',      screen: null,           label: 'Mileage Form',        sub: 'Submit mileage reimbursement',    icon: '🚗', bg: '#fdf0ed', color: '#c84b2f', roles: ['team', 'solo'], external: true },
+  { key: 'labsafety',    screen: null,           label: 'Lab Safety',          sub: 'Safety training & certification', icon: '🦺', bg: '#fef3c7', color: '#92400e', roles: ['team', 'solo'], external: true },
+  { key: 'profile',      screen: 'profile',      label: 'Profile',             sub: 'Your info & settings',            icon: '👤', bg: '#f3eeff', color: '#7c4dbd', roles: ['team', 'solo'] },
 ]
 
 export const PINNED_MODULES = ['profile']
@@ -50,14 +50,12 @@ function ModuleToggleCard({ module, selected, onToggle, pinned }) {
 }
 
 export default function DashboardIconPicker({ session, loginMode, onDone }) {
-  const roleKey = loginMode === 'solo' ? 'solo' : 'team'
-  const available = ALL_MODULES_META.filter(m => m.roles.includes(roleKey))
-  const studentAllowed = ['projects', 'training', 'booking', 'equipmenthub', 'mileage', 'labsafety', 'remessages', 'profile']
-  const filtered = session?.role === 'student'
-    ? available.filter(m => studentAllowed.includes(m.key))
-    : available
+  // All 11 icons available for both solo and team
+  const available = ALL_MODULES_META
 
   const [selected, setSelected] = useState(null)
+  // For students: the pool staff has allowed them to pick from
+  const [allowedPool, setAllowedPool] = useState(null)
   const [saving, setSaving] = useState(false)
 
   useEffect(() => { loadSaved() }, [])
@@ -65,19 +63,41 @@ export default function DashboardIconPicker({ session, loginMode, onDone }) {
   async function loadSaved() {
     try {
       let savedModules = null
+      let pool = null
+
       if (loginMode === 'solo' && session?.userId) {
         const { data } = await sb.from('solo_users').select('active_modules').eq('id', session.userId).maybeSingle()
         savedModules = data?.active_modules
-      } else if (loginMode !== 'solo' && session?.userId) {
-        const { data } = await sb.from('user_dashboard_prefs').select('active_modules').eq('user_id', session.userId).maybeSingle()
+      } else if (session?.userId) {
+        const { data } = await sb.from('user_dashboard_prefs')
+          .select('active_modules, allowed_modules')
+          .eq('user_id', session.userId).maybeSingle()
         savedModules = data?.active_modules
+        // Students: staff sets which icons they're allowed to pick from
+        if (session?.role === 'student') {
+          pool = data?.allowed_modules || []
+          setAllowedPool(pool)
+        }
       } else {
+        // admin (no userId)
         const saved = localStorage.getItem('ilab_admin_modules')
         savedModules = saved ? JSON.parse(saved) : null
       }
-      setSelected(savedModules?.length ? new Set(savedModules) : new Set(filtered.map(m => m.key)))
+
+      // Determine which modules to display in the picker
+      const displayable = pool !== null
+        ? available.filter(m => pool.includes(m.key))
+        : available
+
+      if (savedModules?.length) {
+        // Restore saved, filtered to what's currently displayable
+        setSelected(new Set(savedModules.filter(k => displayable.some(m => m.key === k))))
+      } else {
+        // First time: select all displayable by default
+        setSelected(new Set(displayable.map(m => m.key)))
+      }
     } catch (e) {
-      setSelected(new Set(filtered.map(m => m.key)))
+      setSelected(new Set(available.map(m => m.key)))
     }
   }
 
@@ -86,7 +106,7 @@ export default function DashboardIconPicker({ session, loginMode, onDone }) {
     setSelected(prev => { const next = new Set(prev); next.has(key) ? next.delete(key) : next.add(key); return next })
   }
 
-  function selectAll() { setSelected(new Set(filtered.map(m => m.key))) }
+  function selectAll() { setSelected(new Set(displayModules.map(m => m.key))) }
   function selectNone() { setSelected(new Set(PINNED_MODULES)) }
 
   async function save() {
@@ -96,7 +116,7 @@ export default function DashboardIconPicker({ session, loginMode, onDone }) {
     try {
       if (loginMode === 'solo' && session?.userId) {
         await sb.from('solo_users').update({ active_modules: modules, has_set_dashboard: true }).eq('id', session.userId)
-      } else if (loginMode !== 'solo' && session?.userId) {
+      } else if (session?.userId) {
         await sb.from('user_dashboard_prefs').upsert({ user_id: session.userId, active_modules: modules, has_set_dashboard: true })
       } else {
         localStorage.setItem('ilab_admin_modules', JSON.stringify(modules))
@@ -113,6 +133,23 @@ export default function DashboardIconPicker({ session, loginMode, onDone }) {
     </div>
   )
 
+  // Student with no pool set yet
+  if (session?.role === 'student' && allowedPool !== null && allowedPool.length === 0) return (
+    <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.55)', zIndex: 500, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 20 }}>
+      <div style={{ background: 'var(--surface)', borderRadius: 20, padding: '40px 32px', maxWidth: 400, textAlign: 'center', border: '1px solid var(--border)' }}>
+        <div style={{ fontSize: 40, marginBottom: 12 }}>🔒</div>
+        <div style={{ fontWeight: 700, fontSize: 17, marginBottom: 8 }}>No icons assigned yet</div>
+        <div style={{ fontSize: 13, color: 'var(--text2)', lineHeight: 1.6, marginBottom: 20 }}>Your staff hasn't assigned any dashboard icons for you yet. Contact them to get access.</div>
+        <button className="btn" onClick={() => onDone(null)}>Close</button>
+      </div>
+    </div>
+  )
+
+  // Display: all 11 for solo/admin/staff, or staff-allowed pool for students
+  const displayModules = allowedPool !== null
+    ? available.filter(m => allowedPool.includes(m.key))
+    : available
+
   const selectedCount = selected.size
 
   return (
@@ -126,16 +163,20 @@ export default function DashboardIconPicker({ session, loginMode, onDone }) {
             <div style={{ width: 44, height: 44, borderRadius: 12, background: loginMode === 'solo' ? '#EEEDFE' : '#E1F5EE', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 22, flexShrink: 0 }}>⊞</div>
             <div>
               <div style={{ fontWeight: 700, fontSize: 19, color: 'var(--text)' }}>Customize your dashboard</div>
-              <div style={{ fontSize: 13, color: 'var(--text3)', marginTop: 2 }}>Pick the shortcuts you want on your home screen</div>
+              <div style={{ fontSize: 13, color: 'var(--text3)', marginTop: 2 }}>
+                {session?.role === 'student'
+                  ? 'Pick from the icons your staff has made available for you'
+                  : 'Pick the shortcuts you want on your home screen'}
+              </div>
             </div>
             <button onClick={() => onDone(null)} style={{ marginLeft: 'auto', border: 'none', background: 'none', cursor: 'pointer', fontSize: 20, color: 'var(--text3)', padding: '4px 8px', borderRadius: 8, lineHeight: 1 }}>✕</button>
           </div>
           <div style={{ height: 3, background: 'var(--surface2)', borderRadius: 99, margin: '18px 0 0', overflow: 'hidden' }}>
-            <div style={{ height: '100%', width: `${Math.min(100, (selectedCount / filtered.length) * 100)}%`, background: loginMode === 'solo' ? '#534AB7' : '#1D9E75', borderRadius: 99, transition: 'width 0.3s' }} />
+            <div style={{ height: '100%', width: `${Math.min(100, (selectedCount / displayModules.length) * 100)}%`, background: loginMode === 'solo' ? '#534AB7' : '#1D9E75', borderRadius: 99, transition: 'width 0.3s' }} />
           </div>
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '8px 0 16px' }}>
             <div style={{ fontSize: 12, color: 'var(--text3)' }}>
-              <span style={{ fontWeight: 600, color: 'var(--text)' }}>{selectedCount}</span> of {filtered.length} selected
+              <span style={{ fontWeight: 600, color: 'var(--text)' }}>{selectedCount}</span> of {displayModules.length} selected
             </div>
             <div style={{ display: 'flex', gap: 10 }}>
               <button onClick={selectAll} style={{ fontSize: 12, border: 'none', background: 'none', cursor: 'pointer', color: 'var(--accent)', fontWeight: 600, padding: '2px 0' }}>Select all</button>
@@ -146,7 +187,7 @@ export default function DashboardIconPicker({ session, loginMode, onDone }) {
         </div>
         <div style={{ overflowY: 'auto', padding: '0 28px', flex: 1 }}>
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(175px, 1fr))', gap: 10, paddingBottom: 20 }}>
-            {filtered.map(m => (
+            {displayModules.map(m => (
               <ModuleToggleCard key={m.key} module={m} selected={selected.has(m.key)} onToggle={toggle} pinned={PINNED_MODULES.includes(m.key)} />
             ))}
           </div>

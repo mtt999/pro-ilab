@@ -2,8 +2,8 @@ import { useState, useEffect } from 'react'
 import { sb } from '../lib/supabase'
 import { ALL_MODULES_META, PINNED_MODULES } from './DashboardIconPicker'
 
-// All icons a student could ever see
-const STUDENT_POOL = ALL_MODULES_META.filter(m => m.roles.includes('team'))
+// All 11 icons staff can assign to students
+const STUDENT_POOL = ALL_MODULES_META
 
 export default function StudentIconManager({ student, onClose }) {
   const [allowed, setAllowed] = useState(null) // null = loading
@@ -16,7 +16,6 @@ export default function StudentIconManager({ student, onClose }) {
       .select('allowed_modules')
       .eq('user_id', student.id)
       .maybeSingle()
-    // If staff has set a pool, use it. Otherwise start with nothing selected.
     setAllowed(new Set(data?.allowed_modules?.length ? data.allowed_modules : []))
   }
 
@@ -37,7 +36,7 @@ export default function StudentIconManager({ student, onClose }) {
       allowed_modules: modules,
     })
     setSaving(false)
-    onClose(true) // true = saved
+    onClose(true)
   }
 
   const name = [student.email, student.name].filter(Boolean).join(' ')
@@ -54,15 +53,13 @@ export default function StudentIconManager({ student, onClose }) {
             <div style={{ width: 42, height: 42, borderRadius: 12, background: '#e0f2fe', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 20, flexShrink: 0 }}>🎛️</div>
             <div style={{ flex: 1 }}>
               <div style={{ fontWeight: 700, fontSize: 17, color: 'var(--text)' }}>Dashboard icons for {name}</div>
-              <div style={{ fontSize: 12, color: 'var(--text3)', marginTop: 2 }}>Select which icons this student is allowed to use on their dashboard.</div>
+              <div style={{ fontSize: 12, color: 'var(--text3)', marginTop: 2 }}>Select which icons this student is allowed to choose from on their dashboard.</div>
             </div>
             <button onClick={() => onClose(false)} style={{ border: 'none', background: 'none', cursor: 'pointer', fontSize: 20, color: 'var(--text3)', padding: '4px 8px' }}>✕</button>
           </div>
-          {/* Info banner */}
           <div style={{ background: '#e0f2fe', borderRadius: 8, padding: '8px 14px', marginTop: 14, fontSize: 12, color: '#0369a1', lineHeight: 1.5 }}>
-            ℹ️ The student will pick from these icons on their first login. Profile is always visible.
+            ℹ️ The student will pick from <strong>only these icons</strong> when customizing their dashboard. Profile is always visible.
           </div>
-          {/* Progress */}
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '12px 0 14px' }}>
             <div style={{ fontSize: 12, color: 'var(--text3)' }}><span style={{ fontWeight: 600, color: 'var(--text)' }}>{selectedCount}</span> of {STUDENT_POOL.length} allowed</div>
             <div style={{ display: 'flex', gap: 10 }}>
@@ -101,7 +98,7 @@ export default function StudentIconManager({ student, onClose }) {
 
         {/* Footer */}
         <div style={{ padding: '14px 26px 22px', borderTop: '1px solid var(--border)', display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12 }}>
-          <div style={{ fontSize: 12, color: 'var(--text3)' }}>Student can further customize from their own Profile tab.</div>
+          <div style={{ fontSize: 12, color: 'var(--text3)' }}>Student picks their favorites from this list on their first login.</div>
           <div style={{ display: 'flex', gap: 10 }}>
             <button className="btn" onClick={() => onClose(false)}>Cancel</button>
             <button className="btn btn-primary" onClick={save} disabled={saving}>
