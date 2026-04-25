@@ -45,29 +45,34 @@ export default function App() {
     }
   }, [session])
 
-  // Check if this is a first login (no dashboard prefs saved yet)
+  // Check first login — depend on BOTH userId AND loginMode so it re-runs correctly
   useEffect(() => {
-    if (!session?.userId) { setShowIconPicker(false); return }
-    checkFirstLogin()
-  }, [session?.userId])
+    if (!session?.userId || !session?.loginMode) {
+      setShowIconPicker(false)
+      return
+    }
+    checkFirstLogin(session.userId, session.loginMode)
+  }, [session?.userId, session?.loginMode])
 
-  async function checkFirstLogin() {
+  async function checkFirstLogin(userId, loginMode) {
     try {
-      const isSolo = session?.loginMode === 'solo'
-      if (isSolo) {
+      if (loginMode === 'solo') {
         const { data } = await sb.from('solo_users')
           .select('has_set_dashboard')
-          .eq('id', session.userId)
+          .eq('id', userId)
           .maybeSingle()
-        setShowIconPicker(!data?.has_set_dashboard)
+        // Show picker if: no row, row with NULL, or row with false
+        setShowIconPicker(data?.has_set_dashboard !== true)
       } else {
         const { data } = await sb.from('user_dashboard_prefs')
           .select('has_set_dashboard')
-          .eq('user_id', session.userId)
+          .eq('user_id', userId)
           .maybeSingle()
-        setShowIconPicker(!data?.has_set_dashboard)
+        // Show picker if: no row, row with NULL, or row with false
+        setShowIconPicker(data?.has_set_dashboard !== true)
       }
     } catch (e) {
+      console.error('checkFirstLogin error:', e)
       setShowIconPicker(false)
     }
   }
@@ -133,10 +138,8 @@ export default function App() {
       {showIconPicker === true && session?.userId && (
         <DashboardIconPicker
           session={session}
-          loginMode={session?.loginMode || 'team'}
-          onDone={(savedModules) => {
-            setShowIconPicker(false)
-          }}
+          loginMode={session.loginMode}
+          onDone={() => setShowIconPicker(false)}
         />
       )}
     </>
