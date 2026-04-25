@@ -19,6 +19,177 @@ const sEmail      = s => s?.phone  || ''
 const sSupervisor = s => s?.degree || s?.supervisor || ''
 
 // ══════════════════════════════════════════════════════════════
+// SOLO PROFILE — reads from solo_users table
+// ══════════════════════════════════════════════════════════════
+function SoloProfile({ session }) {
+  const { toast, setSession } = useAppStore()
+  const [user, setUser] = useState(null)
+  const [loading, setLoading] = useState(true)
+  const [activeTab, setActiveTab] = useState('info')
+  const [form, setForm] = useState({})
+  const [pinForm, setPinForm] = useState({ current: '', newPin: '', confirm: '' })
+  const [pinError, setPinError] = useState('')
+  const [saving, setSaving] = useState(false)
+  const [uploading, setUploading] = useState(false)
+  const fileRef = useRef(null)
+
+  useEffect(() => { load() }, [])
+
+  async function load() {
+    setLoading(true)
+    if (!session?.userId) { setLoading(false); return }
+    const { data } = await sb.from('solo_users').select('*').eq('id', session.userId).maybeSingle()
+    setUser(data)
+    if (data) setForm({
+      name: data.name || '',
+      email: data.email || '',
+      phone: data.phone || '',
+      photo_url: data.photo_url || '',
+    })
+    setLoading(false)
+  }
+
+  async function saveInfo() {
+    setSaving(true)
+    const { error } = await sb.from('solo_users').update({
+      name: form.name.trim(),
+      email: form.email || null,
+      phone: form.phone || null,
+      photo_url: form.photo_url || null,
+    }).eq('id', user.id)
+    if (error) { toast('Error saving: ' + error.message); setSaving(false); return }
+    setSession({ ...session, username: form.name.trim(), photoUrl: form.photo_url || null })
+    toast('Profile saved ✓'); setSaving(false); load()
+  }
+
+  async function savePassword() {
+    setPinError('')
+    if (!pinForm.current) { setPinError('Enter your current password.'); return }
+    if (!pinForm.newPin || pinForm.newPin.length < 6) { setPinError('Min 6 characters.'); return }
+    if (pinForm.newPin !== pinForm.confirm) { setPinError('Passwords do not match.'); return }
+    const { data } = await sb.from('solo_users').select('password').eq('id', user.id).single()
+    if (data?.password && data.password !== pinForm.current) { setPinError('Current password is incorrect.'); return }
+    await sb.from('solo_users').update({ password: pinForm.newPin }).eq('id', user.id)
+    toast('Password updated ✓'); setPinForm({ current: '', newPin: '', confirm: '' })
+  }
+
+  async function uploadPhoto(file) {
+    if (!file?.type.startsWith('image/')) { toast('Please select an image.'); return }
+    setUploading(true)
+    try {
+      const compressed = await new Promise(resolve => {
+        const img = new Image(), url = URL.createObjectURL(file)
+        img.onload = () => {
+          const s = Math.min(1, 400 / Math.max(img.width, img.height))
+          const canvas = document.createElement('canvas')
+          canvas.width = Math.round(img.width * s); canvas.height = Math.round(img.height * s)
+          canvas.getContext('2d').drawImage(img, 0, 0, canvas.width, canvas.height)
+          URL.revokeObjectURL(url); canvas.toBlob(resolve, 'image/jpeg', 0.85)
+        }
+        img.src = url
+      })
+      const path = `avatars/solo_${user.id}_${Date.now()}.jpg`
+      const { error: uploadErr } = await sb.storage.from('project-files').upload(path, compressed, { contentType: 'image/jpeg', upsert: true })
+      if (uploadErr) throw uploadErr
+      const photoUrl = sb.storage.from('project-files').getPublicUrl(path).data.publicUrl
+      await sb.from('solo_users').update({ photo_url: photoUrl }).eq('id', user.id)
+      setForm(f => ({ ...f, photo_url: photoUrl }))
+      setSession({ ...session, photoUrl })
+      toast('Photo saved ✓')
+    } catch (err) { toast('Upload failed: ' + (err?.message || String(err))) }
+    setUploading(false)
+  }
+
+  if (loading) return <div style={{ textAlign: 'center', padding: 40 }}><div className="spinner" style={{ margin: '0 auto' }} /></div>
+  if (!user) return <div className="empty-state"><div className="empty-icon">👤</div>Profile not found.</div>
+
+  return (
+    <div style={{ maxWidth: 640, margin: '0 auto' }}>
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 20 }}>
+        <div className="section-title">My Profile</div>
+        <HelpPanel screen="profile" />
+      </div>
+
+      {/* Avatar card */}
+      <div className="card" style={{ display: 'flex', alignItems: 'center', gap: 20, marginBottom: 20 }}>
+        <div style={{ width: 72, height: 72, borderRadius: '50%', background: 'var(--surface2)', border: '2px solid var(--border)', display: 'flex', alignItems: 'center', justifyContent: 'center', overflow: 'hidden', flexShrink: 0 }}>
+          {form.photo_url ? <img src={form.photo_url} style={{ width: '100%', height: '100%', objectFit: 'cover' }} /> : <span style={{ fontSize: 32, color: 'var(--text3)' }}>👤</span>}
+        </div>
+        <div>
+          <div style={{ fontWeight: 700, fontSize: 20 }}>{form.name || user.name}</div>
+          <div style={{ fontSize: 13, color: 'var(--text3)', marginTop: 4 }}>{form.email || user.email}</div>
+          <span style={{ display: 'inline-block', marginTop: 6, background: '#EEEDFE', color: '#534AB7', borderRadius: 99, padding: '2px 10px', fontSize: 12, fontWeight: 600 }}>Solo</span>
+        </div>
+      </div>
+
+      {/* Tabs */}
+      <div style={{ display: 'flex', borderBottom: '1px solid var(--border)', marginBottom: 24, overflowX: 'auto' }}>
+        {[
+          { key: 'info',      label: '👤 My Info' },
+          { key: 'dashboard', label: '🎛️ Dashboard Icons' },
+          { key: 'password',  label: '🔑 Password' },
+          { key: 'photo',     label: '🖼️ Photo' },
+        ].map(t => (
+          <button key={t.key} onClick={() => setActiveTab(t.key)}
+            style={{ padding: '10px 22px', border: 'none', background: 'transparent', fontFamily: 'var(--sans)', fontSize: 14, fontWeight: 500, cursor: 'pointer', color: activeTab === t.key ? '#534AB7' : 'var(--text2)', borderBottom: `2px solid ${activeTab === t.key ? '#534AB7' : 'transparent'}`, transition: 'all 0.15s', whiteSpace: 'nowrap' }}>
+            {t.label}
+          </button>
+        ))}
+      </div>
+
+      {activeTab === 'info' && (
+        <div className="card">
+          <div className="field"><label>Full Name *</label><input value={form.name} onChange={e => setForm(f => ({ ...f, name: e.target.value }))} /></div>
+          <div className="field"><label>Email</label><input type="email" value={form.email} onChange={e => setForm(f => ({ ...f, email: e.target.value }))} /></div>
+          <div className="field"><label>Phone</label><input value={form.phone || ''} onChange={e => setForm(f => ({ ...f, phone: e.target.value }))} /></div>
+          <button className="btn btn-primary" onClick={saveInfo} disabled={saving}>{saving ? 'Saving…' : 'Save changes'}</button>
+        </div>
+      )}
+
+      {activeTab === 'dashboard' && <DashboardIconsPanel session={session} />}
+
+      {activeTab === 'password' && (
+        <div className="card">
+          <div style={{ fontWeight: 600, fontSize: 15, marginBottom: 4 }}>Change password</div>
+          <div style={{ fontSize: 13, color: 'var(--text3)', marginBottom: 20 }}>Minimum 6 characters.</div>
+          <div className="field"><label>Current password</label><input type="password" value={pinForm.current} onChange={e => { setPinForm(f => ({ ...f, current: e.target.value })); setPinError('') }} /></div>
+          <div className="grid-2">
+            <div className="field"><label>New password</label><input type="password" value={pinForm.newPin} onChange={e => { setPinForm(f => ({ ...f, newPin: e.target.value })); setPinError('') }} /></div>
+            <div className="field"><label>Confirm</label><input type="password" value={pinForm.confirm} onChange={e => { setPinForm(f => ({ ...f, confirm: e.target.value })); setPinError('') }} /></div>
+          </div>
+          {pinError && <div style={{ fontSize: 13, color: 'var(--accent2)', marginBottom: 12 }}>⚠️ {pinError}</div>}
+          <button className="btn btn-primary" onClick={savePassword} disabled={!pinForm.current || !pinForm.newPin || !pinForm.confirm}>Update password</button>
+        </div>
+      )}
+
+      {activeTab === 'photo' && (
+        <div className="card">
+          <div style={{ display: 'flex', alignItems: 'center', gap: 16, marginBottom: 20, padding: '12px 16px', background: 'var(--surface2)', borderRadius: 'var(--radius-lg)' }}>
+            <div style={{ width: 64, height: 64, borderRadius: '50%', background: 'var(--surface)', border: '2px solid var(--border)', display: 'flex', alignItems: 'center', justifyContent: 'center', overflow: 'hidden', flexShrink: 0 }}>
+              {form.photo_url ? <img src={form.photo_url} style={{ width: '100%', height: '100%', objectFit: 'cover' }} /> : <span style={{ fontSize: 32, color: 'var(--text3)' }}>👤</span>}
+            </div>
+            <div style={{ flex: 1 }}>
+              <div style={{ fontWeight: 600, fontSize: 14 }}>Current photo</div>
+              <div style={{ fontSize: 12, color: 'var(--text3)', marginTop: 2 }}>Saves automatically after upload.</div>
+            </div>
+            {form.photo_url && (
+              <button className="btn btn-sm" onClick={async () => {
+                await sb.from('solo_users').update({ photo_url: null }).eq('id', user.id)
+                setForm(f => ({ ...f, photo_url: '' }))
+                setSession({ ...session, photoUrl: null })
+                toast('Photo removed.')
+              }}>Remove</button>
+            )}
+          </div>
+          <input ref={fileRef} type="file" accept="image/*" style={{ display: 'none' }} onChange={e => uploadPhoto(e.target.files[0])} />
+          <button className="btn btn-sm btn-primary" onClick={() => fileRef.current?.click()} disabled={uploading}>{uploading ? '⏳ Uploading…' : '⬆️ Choose photo'}</button>
+        </div>
+      )}
+    </div>
+  )
+}
+
+// ══════════════════════════════════════════════════════════════
 // DASHBOARD ICONS MANAGER — works for all roles
 // ══════════════════════════════════════════════════════════════
 function DashboardIconsPanel({ session }) {
@@ -30,7 +201,7 @@ function DashboardIconsPanel({ session }) {
   const available = ALL_MODULES_META.filter(m => m.roles.includes(roleKey))
 
   const [selected, setSelected] = useState(null)
-  const [allowedPool, setAllowedPool] = useState(null) // for students: staff-set pool
+  const [allowedPool, setAllowedPool] = useState(null)
   const [saving, setSaving] = useState(false)
 
   useEffect(() => { load() }, [session?.userId])
@@ -45,11 +216,9 @@ function DashboardIconsPanel({ session }) {
         const { data } = await sb.from('user_dashboard_prefs')
           .select('active_modules, allowed_modules')
           .eq('user_id', session.userId).maybeSingle()
-        // For students: pool is allowed_modules set by staff
         if (session?.role === 'student') {
           const pool = data?.allowed_modules || []
           setAllowedPool(pool)
-          // active = intersection of saved active and pool
           const active = data?.active_modules?.length
             ? data.active_modules.filter(k => pool.includes(k) || PINNED_MODULES.includes(k))
             : pool
@@ -65,11 +234,7 @@ function DashboardIconsPanel({ session }) {
 
   function toggle(key) {
     if (PINNED_MODULES.includes(key)) return
-    setSelected(prev => {
-      const next = new Set(prev)
-      next.has(key) ? next.delete(key) : next.add(key)
-      return next
-    })
+    setSelected(prev => { const next = new Set(prev); next.has(key) ? next.delete(key) : next.add(key); return next })
   }
 
   async function save() {
@@ -91,16 +256,14 @@ function DashboardIconsPanel({ session }) {
     <div style={{ textAlign: 'center', padding: 40 }}><div className="spinner" style={{ margin: '0 auto' }} /></div>
   )
 
-  // Student with no pool set by staff
   if (session?.role === 'student' && allowedPool !== null && allowedPool.length === 0) return (
     <div className="card" style={{ textAlign: 'center', padding: '40px 20px' }}>
       <div style={{ fontSize: 36, marginBottom: 12 }}>🔒</div>
       <div style={{ fontWeight: 600, fontSize: 15, marginBottom: 8 }}>No icons assigned yet</div>
-      <div style={{ fontSize: 13, color: 'var(--text2)', lineHeight: 1.6 }}>Your staff or lab manager hasn't assigned dashboard icons for you yet. Please contact them to get access.</div>
+      <div style={{ fontSize: 13, color: 'var(--text2)', lineHeight: 1.6 }}>Your staff hasn't assigned dashboard icons for you yet.</div>
     </div>
   )
 
-  // Pool available for students
   const displayModules = session?.role === 'student' && allowedPool?.length
     ? available.filter(m => allowedPool.includes(m.key) || PINNED_MODULES.includes(m.key))
     : available
@@ -111,10 +274,7 @@ function DashboardIconsPanel({ session }) {
     <div>
       <div className="card" style={{ marginBottom: 20 }}>
         <div style={{ fontWeight: 600, fontSize: 15, marginBottom: 4 }}>🎛️ Dashboard Icons</div>
-        <div style={{ fontSize: 13, color: 'var(--text2)', lineHeight: 1.6 }}>
-          Choose which shortcuts appear on your dashboard.
-          {session?.role === 'student' && <span style={{ color: 'var(--accent)' }}> You can pick from the icons your staff has enabled for you.</span>}
-        </div>
+        <div style={{ fontSize: 13, color: 'var(--text2)', lineHeight: 1.6 }}>Choose which shortcuts appear on your dashboard.</div>
       </div>
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 14 }}>
         <div style={{ fontSize: 13, color: 'var(--text2)' }}><span style={{ fontWeight: 600, color: 'var(--text)' }}>{selectedCount}</span> of {displayModules.length} selected</div>
@@ -167,7 +327,7 @@ function NotificationPrefsPanel({ userId, role }) {
     { title: '🎓 Training & Certifications', desc: 'Stay on top of your training status.', roles: ['student'], events: [
       { key: 'training_approved',  label: 'Training certificate approved' },
       { key: 'training_expiring',  label: 'Training certificate expiring soon' },
-      { key: 'training_submitted', label: 'Training submission received (confirmation)' },
+      { key: 'training_submitted', label: 'Training submission received' },
     ]},
     { title: '📋 Project Management', desc: 'Notifications from the PM workspace.', roles: ['user', 'admin'], events: [
       { key: 'task_assigned',       label: 'Task assigned to me' },
@@ -277,14 +437,10 @@ function AdminSettings({ session, toast }) {
     if (form.newPassword !== form.confirmPassword) { setError('Passwords do not match.'); return }
     if (form.newPassword.length < 6) { setError('Password must be at least 6 characters.'); return }
     setSaving(true)
-    if (session.userId) {
-      const { data } = await sb.from('users').select('password').eq('id', session.userId).single()
-      if (data?.password && data.password !== form.currentPassword) { setError('Current password is incorrect.'); setSaving(false); return }
-      await sb.from('users').update({ password: form.newPassword, ...(form.email ? { email: form.email } : {}) }).eq('id', session.userId)
-    } else {
-      await sb.from('settings').upsert({ key: 'admin_password', value: form.newPassword })
-      if (form.email) await sb.from('settings').upsert({ key: 'admin_email', value: form.email })
-    }
+    const { data: adminPass } = await sb.from('settings').select('value').eq('key', 'admin_password').maybeSingle()
+    if (form.currentPassword !== (adminPass?.value || 'Motlagh@2026')) { setError('Current password is incorrect.'); setSaving(false); return }
+    await sb.from('settings').upsert({ key: 'admin_password', value: form.newPassword })
+    if (form.email) await sb.from('settings').upsert({ key: 'admin_email', value: form.email })
     toast('Password updated ✓')
     setForm({ email: '', currentPassword: '', newPassword: '', confirmPassword: '' })
     setSaving(false)
@@ -292,8 +448,7 @@ function AdminSettings({ session, toast }) {
   return (
     <div className="card" style={{ maxWidth: 440 }}>
       <div style={{ fontWeight: 600, fontSize: 15, marginBottom: 4 }}>🔑 Account Settings</div>
-      <div style={{ fontSize: 13, color: 'var(--text2)', marginBottom: 20 }}>Update your login email and password.</div>
-      <div className="field"><label>Email address</label><input type="email" value={form.email} onChange={e => setForm(f => ({ ...f, email: e.target.value }))} placeholder="motlagh999@gmail.com" /></div>
+      <div style={{ fontSize: 13, color: 'var(--text2)', marginBottom: 20 }}>Update the admin password.</div>
       <div className="field"><label>Current password</label><input type="password" value={form.currentPassword} onChange={e => setForm(f => ({ ...f, currentPassword: e.target.value }))} placeholder="••••••••" /></div>
       <div className="field"><label>New password</label><input type="password" value={form.newPassword} onChange={e => setForm(f => ({ ...f, newPassword: e.target.value }))} placeholder="Min. 6 characters" /></div>
       <div className="field"><label>Confirm new password</label><input type="password" value={form.confirmPassword} onChange={e => setForm(f => ({ ...f, confirmPassword: e.target.value }))} placeholder="••••••••" /></div>
@@ -310,7 +465,7 @@ function StudentsPanel({ toast }) {
   const [search, setSearch] = useState('')
   const [showModal, setShowModal] = useState(false)
   const [editStudent, setEditStudent] = useState(null)
-  const [iconStudent, setIconStudent] = useState(null) // student whose icons we're editing
+  const [iconStudent, setIconStudent] = useState(null)
   const [importPreview, setImportPreview] = useState(null)
   const [importing, setImporting] = useState(false)
   const fileRef = useRef(null)
@@ -426,10 +581,7 @@ function StudentsPanel({ toast }) {
                 </div>
               </div>
               <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
-                {/* 🎛️ Dashboard Icons button per student */}
-                <button className="btn btn-sm" onClick={() => setIconStudent(s)} title="Set allowed dashboard icons">
-                  🎛️ Icons
-                </button>
+                <button className="btn btn-sm" onClick={() => setIconStudent(s)} title="Set allowed dashboard icons">🎛️ Icons</button>
                 <button className="btn btn-sm" onClick={() => { setEditStudent(s); setShowModal(true) }}>Edit</button>
                 <button className="btn btn-sm" onClick={() => toggleActive(s)}>{s.is_active ? 'Deactivate' : 'Activate'}</button>
                 <button className="btn btn-sm btn-danger" onClick={() => deleteStudent(s.id)}>Delete</button>
@@ -838,10 +990,14 @@ function UserProfile({ session }) {
   )
 }
 
+// ══════════════════════════════════════════════════════════════
+// MAIN EXPORT — routes by role
+// ══════════════════════════════════════════════════════════════
 export default function Profile() {
   const { session } = useAppStore()
   if (session?.role === 'admin') return <AdminProfile />
   if (session?.role === 'user') return <StaffProfile session={session} />
+  if (session?.loginMode === 'solo') return <SoloProfile session={session} />
   return <UserProfile session={session} />
 }
 
