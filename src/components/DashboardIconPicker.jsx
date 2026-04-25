@@ -134,7 +134,9 @@ export default function DashboardIconPicker({ session, loginMode, onDone }) {
             <div style={{ height: '100%', width: `${Math.min(100, (selectedCount / filtered.length) * 100)}%`, background: loginMode === 'solo' ? '#534AB7' : '#1D9E75', borderRadius: 99, transition: 'width 0.3s' }} />
           </div>
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '8px 0 16px' }}>
-            <div style={{ fontSize: 12, color: 'var(--text3)' }}><span style={{ fontWeight: 600, color: 'var(--text)' }}>{selectedCount}</span> of {filtered.length} selected</div>
+            <div style={{ fontSize: 12, color: 'var(--text3)' }}>
+              <span style={{ fontWeight: 600, color: 'var(--text)' }}>{selectedCount}</span> of {filtered.length} selected
+            </div>
             <div style={{ display: 'flex', gap: 10 }}>
               <button onClick={selectAll} style={{ fontSize: 12, border: 'none', background: 'none', cursor: 'pointer', color: 'var(--accent)', fontWeight: 600, padding: '2px 0' }}>Select all</button>
               <span style={{ color: 'var(--border)' }}>·</span>
@@ -150,8 +152,11 @@ export default function DashboardIconPicker({ session, loginMode, onDone }) {
           </div>
         </div>
         <div style={{ padding: '16px 28px 24px', borderTop: '1px solid var(--border)', display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12, background: 'var(--surface)' }}>
-          <div style={{ fontSize: 12, color: 'var(--text3)', lineHeight: 1.5 }}>You can change this anytime from <strong>Profile → Dashboard Icons</strong> or the <strong>🎛️ Customize</strong> button.</div>
-          <button onClick={save} disabled={saving || selectedCount === 0} style={{ padding: '10px 28px', background: loginMode === 'solo' ? '#534AB7' : '#1D9E75', color: '#fff', border: 'none', borderRadius: 10, fontWeight: 700, fontSize: 14, cursor: (saving || selectedCount === 0) ? 'not-allowed' : 'pointer', opacity: (saving || selectedCount === 0) ? 0.6 : 1, whiteSpace: 'nowrap', flexShrink: 0 }}>
+          <div style={{ fontSize: 12, color: 'var(--text3)', lineHeight: 1.5 }}>
+            You can change this anytime from <strong>Profile → Dashboard Icons</strong>.
+          </div>
+          <button onClick={save} disabled={saving || selectedCount === 0}
+            style={{ padding: '10px 28px', background: loginMode === 'solo' ? '#534AB7' : '#1D9E75', color: '#fff', border: 'none', borderRadius: 10, fontWeight: 700, fontSize: 14, cursor: (saving || selectedCount === 0) ? 'not-allowed' : 'pointer', opacity: (saving || selectedCount === 0) ? 0.6 : 1, whiteSpace: 'nowrap', flexShrink: 0 }}>
             {saving ? 'Saving…' : 'Save & apply →'}
           </button>
         </div>

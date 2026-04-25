@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react'
 import { useAppStore } from './store/useAppStore'
 import { sb } from './lib/supabase'
 import Login from './screens/Login'
+import AdminLogin from './screens/AdminLogin'
 import Layout from './components/Layout'
 import Dashboard from './screens/Dashboard'
 import REMessages from './screens/REMessages'
@@ -20,11 +21,13 @@ import PM from './screens/PM'
 import Toast from './components/Toast'
 import DashboardIconPicker from './components/DashboardIconPicker'
 
+// Detect if we're on the /admin route
+const IS_ADMIN_ROUTE = window.location.pathname.endsWith('/admin') || window.location.pathname.endsWith('/admin/')
+
 export default function App() {
   const { session, screen, refreshCache, setScreen } = useAppStore()
   const [loading, setLoading] = useState(true)
   const [userAccess, setUserAccess] = useState(null)
-  // null = not checked yet, false = hide, true = show picker
   const [showIconPicker, setShowIconPicker] = useState(null)
 
   useEffect(() => {
@@ -45,7 +48,6 @@ export default function App() {
     }
   }, [session])
 
-  // Fire whenever loginMode becomes available — userId can be null (admin)
   useEffect(() => {
     if (!session?.loginMode) { setShowIconPicker(false); return }
     checkFirstLogin(session.userId, session.loginMode)
@@ -53,28 +55,19 @@ export default function App() {
 
   async function checkFirstLogin(userId, loginMode) {
     try {
-      // Admin has no userId — use localStorage as fallback
       if (!userId) {
         const done = localStorage.getItem('ilab_admin_dashboard_set') === 'true'
         setShowIconPicker(!done)
         return
       }
-
       if (loginMode === 'solo') {
-        const { data } = await sb.from('solo_users')
-          .select('has_set_dashboard')
-          .eq('id', userId)
-          .maybeSingle()
+        const { data } = await sb.from('solo_users').select('has_set_dashboard').eq('id', userId).maybeSingle()
         setShowIconPicker(data?.has_set_dashboard !== true)
       } else {
-        const { data } = await sb.from('user_dashboard_prefs')
-          .select('has_set_dashboard')
-          .eq('user_id', userId)
-          .maybeSingle()
+        const { data } = await sb.from('user_dashboard_prefs').select('has_set_dashboard').eq('user_id', userId).maybeSingle()
         setShowIconPicker(data?.has_set_dashboard !== true)
       }
     } catch (e) {
-      console.error('checkFirstLogin error:', e)
       setShowIconPicker(false)
     }
   }
@@ -113,6 +106,11 @@ export default function App() {
     </div>
   )
 
+  // Admin-only route: /pro-ilab/admin
+  if (IS_ADMIN_ROUTE) {
+    if (!session || session.role !== 'admin') return <AdminLogin />
+  }
+
   if (!session) return <Login />
 
   const screens = {
@@ -136,16 +134,12 @@ export default function App() {
     <>
       <Layout>{screens[screen] || <Dashboard />}</Layout>
       <Toast />
-      {/* First-login dashboard icon picker */}
       {showIconPicker === true && (
         <DashboardIconPicker
           session={session}
           loginMode={session.loginMode}
           onDone={() => {
-            // Admin fallback: mark done in localStorage
-            if (!session.userId) {
-              localStorage.setItem('ilab_admin_dashboard_set', 'true')
-            }
+            if (!session.userId) localStorage.setItem('ilab_admin_dashboard_set', 'true')
             setShowIconPicker(false)
           }}
         />
