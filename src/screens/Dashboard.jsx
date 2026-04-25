@@ -53,7 +53,6 @@ function ExternalLinkModal({ url, onConfirm, onCancel }) {
   )
 }
 
-// pointerEvents: 'none' on ALL inner divs so clicks always reach the outer onClick
 function ModuleCard({ m, onClick, imgUrl, isAdminManage }) {
   return (
     <div
@@ -91,7 +90,7 @@ function LockedCard({ m }) {
   )
 }
 
-function CardGridView({ modules, onNavigate, mileageUrl, labSafetyUrl, isAdmin, onEditUrl, moduleImages, isStudent }) {
+function CardGridView({ modules, onNavigate, mileageUrl, labSafetyUrl, isAdmin, onEditUrl, moduleImages, isStudent, activeModules }) {
   const [confirmExternal, setConfirmExternal] = useState(null)
 
   if (isStudent) {
@@ -112,6 +111,12 @@ function CardGridView({ modules, onNavigate, mileageUrl, labSafetyUrl, isAdmin, 
     )
   }
 
+  // Admin manage cards — only show if that key is in activeModules (or no prefs saved yet)
+  const adminManageCards = [
+    { key: 'mileage',   icon: '🚗', label: 'Mileage Form', sub: 'Manage link', bg: '#fdf0ed', color: '#c84b2f' },
+    { key: 'labsafety', icon: '🦺', label: 'Lab Safety',   sub: 'Manage link', bg: '#fef3c7', color: '#92400e' },
+  ].filter(card => !activeModules || activeModules.includes(card.key))
+
   return (
     <>
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(180px, 1fr))', gap: 14 }}>
@@ -119,10 +124,7 @@ function CardGridView({ modules, onNavigate, mileageUrl, labSafetyUrl, isAdmin, 
           <ModuleCard key={m.key} m={m} imgUrl={moduleImages[m.key]}
             onClick={() => m.external ? setConfirmExternal({ url: m.key === 'mileage' ? mileageUrl : labSafetyUrl }) : onNavigate(m.screen)} />
         ))}
-        {isAdmin && [
-          { key: 'mileage',   icon: '🚗', label: 'Mileage Form', sub: 'Manage link', bg: '#fdf0ed', color: '#c84b2f' },
-          { key: 'labsafety', icon: '🦺', label: 'Lab Safety',   sub: 'Manage link', bg: '#fef3c7', color: '#92400e' },
-        ].map(card => (
+        {isAdmin && adminManageCards.map(card => (
           <ModuleCard key={card.key} m={card} imgUrl={moduleImages[card.key]} isAdminManage onClick={() => onEditUrl(card.key)} />
         ))}
       </div>
@@ -370,13 +372,22 @@ export default function Dashboard() {
     }
   }, [session?.userId])
 
+  // Load dashboard prefs — works for all user types including admin (no userId)
   useEffect(() => {
-    if (!session?.userId) return
     loadDashboardPrefs()
-  }, [session?.userId])
+  }, [session?.userId, session?.loginMode])
 
   async function loadDashboardPrefs() {
     try {
+      if (!session?.loginMode) return
+
+      // Admin has no userId — use localStorage
+      if (!session?.userId) {
+        const saved = localStorage.getItem('ilab_admin_modules')
+        setActiveModules(saved ? JSON.parse(saved) : null)
+        return
+      }
+
       if (isSolo) {
         const { data } = await sb.from('solo_users').select('active_modules').eq('id', session.userId).maybeSingle()
         setActiveModules(data?.active_modules?.length ? data.active_modules : null)
@@ -457,8 +468,8 @@ export default function Dashboard() {
       </div>
 
       {isStudent && view === 'dashboard' && <StudentDashboardView session={session} onNavigate={s => setScreen(s)} mileageUrl={mileageUrl} labSafetyUrl={labSafetyUrl} moduleImages={moduleImages} />}
-      {isStudent && view === 'grid'      && <CardGridView modules={modules} onNavigate={s => setScreen(s)} mileageUrl={mileageUrl} labSafetyUrl={labSafetyUrl} isAdmin={false} onEditUrl={() => {}} moduleImages={moduleImages} isStudent={true} />}
-      {!isStudent && view === 'grid'     && <CardGridView modules={modules} onNavigate={s => setScreen(s)} mileageUrl={mileageUrl} labSafetyUrl={labSafetyUrl} isAdmin={isAdmin} onEditUrl={(type) => { setEditingUrl(type); setUrlInput(type === 'mileage' ? mileageUrl : labSafetyUrl) }} moduleImages={moduleImages} isStudent={false} />}
+      {isStudent && view === 'grid'      && <CardGridView modules={modules} onNavigate={s => setScreen(s)} mileageUrl={mileageUrl} labSafetyUrl={labSafetyUrl} isAdmin={false} onEditUrl={() => {}} moduleImages={moduleImages} isStudent={true} activeModules={activeModules} />}
+      {!isStudent && view === 'grid'     && <CardGridView modules={modules} onNavigate={s => setScreen(s)} mileageUrl={mileageUrl} labSafetyUrl={labSafetyUrl} isAdmin={isAdmin} onEditUrl={(type) => { setEditingUrl(type); setUrlInput(type === 'mileage' ? mileageUrl : labSafetyUrl) }} moduleImages={moduleImages} isStudent={false} activeModules={activeModules} />}
       {!isStudent && view === 'dashboard' && <DashboardView modules={modules} onNavigate={s => setScreen(s)} session={session} mileageUrl={mileageUrl} labSafetyUrl={labSafetyUrl} isAdmin={isAdmin} onEditUrl={(type) => { setEditingUrl(type); setUrlInput(type === 'mileage' ? mileageUrl : labSafetyUrl) }} moduleImages={moduleImages} />}
 
       {showPicker && (
@@ -466,7 +477,7 @@ export default function Dashboard() {
           session={session}
           loginMode={loginMode}
           onDone={(savedModules) => {
-            setActiveModules(savedModules)
+            if (savedModules) setActiveModules(savedModules)
             setShowPicker(false)
           }}
         />
