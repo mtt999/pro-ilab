@@ -3,6 +3,7 @@ import { useAppStore } from '../store/useAppStore'
 import { sb } from '../lib/supabase'
 import { useState, useEffect, useRef } from 'react'
 import DashboardIconPicker, { ALL_MODULES_META, PINNED_MODULES } from '../components/DashboardIconPicker'
+import StudentIconManager from '../components/StudentIconManager'
 
 const PROJECT_GROUPS = ['Material', 'Sustainability', 'GPR', 'Mechanic', 'Other']
 const DEGREES = ['MS', 'PhD', 'BS', 'Other']
@@ -26,14 +27,10 @@ function DashboardIconsPanel({ session }) {
   const loginMode = session?.loginMode || 'team'
 
   const roleKey = loginMode === 'solo' ? 'solo' : 'team'
-  const studentAllowed = ['projects','training','booking','equipmenthub','mileage','labsafety','remessages','profile']
-  const available = ALL_MODULES_META.filter(m => {
-    if (!m.roles.includes(roleKey)) return false
-    if (session?.role === 'student' && !studentAllowed.includes(m.key)) return false
-    return true
-  })
+  const available = ALL_MODULES_META.filter(m => m.roles.includes(roleKey))
 
-  const [selected, setSelected] = useState(null) // null = loading
+  const [selected, setSelected] = useState(null)
+  const [allowedPool, setAllowedPool] = useState(null) // for students: staff-set pool
   const [saving, setSaving] = useState(false)
 
   useEffect(() => { load() }, [session?.userId])
@@ -45,8 +42,21 @@ function DashboardIconsPanel({ session }) {
         const { data } = await sb.from('solo_users').select('active_modules').eq('id', session.userId).maybeSingle()
         setSelected(new Set(data?.active_modules?.length ? data.active_modules : available.map(m => m.key)))
       } else {
-        const { data } = await sb.from('user_dashboard_prefs').select('active_modules').eq('user_id', session.userId).maybeSingle()
-        setSelected(new Set(data?.active_modules?.length ? data.active_modules : available.map(m => m.key)))
+        const { data } = await sb.from('user_dashboard_prefs')
+          .select('active_modules, allowed_modules')
+          .eq('user_id', session.userId).maybeSingle()
+        // For students: pool is allowed_modules set by staff
+        if (session?.role === 'student') {
+          const pool = data?.allowed_modules || []
+          setAllowedPool(pool)
+          // active = intersection of saved active and pool
+          const active = data?.active_modules?.length
+            ? data.active_modules.filter(k => pool.includes(k) || PINNED_MODULES.includes(k))
+            : pool
+          setSelected(new Set(active))
+        } else {
+          setSelected(new Set(data?.active_modules?.length ? data.active_modules : available.map(m => m.key)))
+        }
       }
     } catch (e) {
       setSelected(new Set(available.map(m => m.key)))
@@ -57,8 +67,7 @@ function DashboardIconsPanel({ session }) {
     if (PINNED_MODULES.includes(key)) return
     setSelected(prev => {
       const next = new Set(prev)
-      if (next.has(key)) next.delete(key)
-      else next.add(key)
+      next.has(key) ? next.delete(key) : next.add(key)
       return next
     })
   }
@@ -74,15 +83,27 @@ function DashboardIconsPanel({ session }) {
         await sb.from('user_dashboard_prefs').upsert({ user_id: session.userId, active_modules: modules, has_set_dashboard: true })
       }
       toast('Dashboard icons saved ✓')
-    } catch (e) {
-      toast('Error saving preferences.')
-    }
+    } catch (e) { toast('Error saving preferences.') }
     setSaving(false)
   }
 
   if (selected === null) return (
     <div style={{ textAlign: 'center', padding: 40 }}><div className="spinner" style={{ margin: '0 auto' }} /></div>
   )
+
+  // Student with no pool set by staff
+  if (session?.role === 'student' && allowedPool !== null && allowedPool.length === 0) return (
+    <div className="card" style={{ textAlign: 'center', padding: '40px 20px' }}>
+      <div style={{ fontSize: 36, marginBottom: 12 }}>🔒</div>
+      <div style={{ fontWeight: 600, fontSize: 15, marginBottom: 8 }}>No icons assigned yet</div>
+      <div style={{ fontSize: 13, color: 'var(--text2)', lineHeight: 1.6 }}>Your staff or lab manager hasn't assigned dashboard icons for you yet. Please contact them to get access.</div>
+    </div>
+  )
+
+  // Pool available for students
+  const displayModules = session?.role === 'student' && allowedPool?.length
+    ? available.filter(m => allowedPool.includes(m.key) || PINNED_MODULES.includes(m.key))
+    : available
 
   const selectedCount = selected.size
 
@@ -91,81 +112,45 @@ function DashboardIconsPanel({ session }) {
       <div className="card" style={{ marginBottom: 20 }}>
         <div style={{ fontWeight: 600, fontSize: 15, marginBottom: 4 }}>🎛️ Dashboard Icons</div>
         <div style={{ fontSize: 13, color: 'var(--text2)', lineHeight: 1.6 }}>
-          Choose which shortcuts appear on your dashboard. Changes take effect immediately after saving.
+          Choose which shortcuts appear on your dashboard.
+          {session?.role === 'student' && <span style={{ color: 'var(--accent)' }}> You can pick from the icons your staff has enabled for you.</span>}
         </div>
       </div>
-
-      {/* Progress + select all/none */}
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 14 }}>
-        <div style={{ fontSize: 13, color: 'var(--text2)' }}>
-          <span style={{ fontWeight: 600, color: 'var(--text)' }}>{selectedCount}</span> of {available.length} selected
-        </div>
+        <div style={{ fontSize: 13, color: 'var(--text2)' }}><span style={{ fontWeight: 600, color: 'var(--text)' }}>{selectedCount}</span> of {displayModules.length} selected</div>
         <div style={{ display: 'flex', gap: 12 }}>
-          <button onClick={() => setSelected(new Set(available.map(m => m.key)))}
-            style={{ fontSize: 12, border: 'none', background: 'none', cursor: 'pointer', color: 'var(--accent)', fontWeight: 600 }}>Select all</button>
-          <button onClick={() => setSelected(new Set(PINNED_MODULES))}
-            style={{ fontSize: 12, border: 'none', background: 'none', cursor: 'pointer', color: 'var(--text3)', fontWeight: 500 }}>Clear</button>
+          <button onClick={() => setSelected(new Set(displayModules.map(m => m.key)))} style={{ fontSize: 12, border: 'none', background: 'none', cursor: 'pointer', color: 'var(--accent)', fontWeight: 600 }}>Select all</button>
+          <button onClick={() => setSelected(new Set(PINNED_MODULES))} style={{ fontSize: 12, border: 'none', background: 'none', cursor: 'pointer', color: 'var(--text3)', fontWeight: 500 }}>Clear</button>
         </div>
       </div>
-
-      {/* Progress bar */}
       <div style={{ height: 3, background: 'var(--surface2)', borderRadius: 99, marginBottom: 20, overflow: 'hidden' }}>
-        <div style={{ height: '100%', width: `${(selectedCount / available.length) * 100}%`, background: loginMode === 'solo' ? '#534AB7' : 'var(--accent)', borderRadius: 99, transition: 'width 0.3s' }} />
+        <div style={{ height: '100%', width: `${(selectedCount / displayModules.length) * 100}%`, background: loginMode === 'solo' ? '#534AB7' : 'var(--accent)', borderRadius: 99, transition: 'width 0.3s' }} />
       </div>
-
-      {/* Module grid */}
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(175px, 1fr))', gap: 10, marginBottom: 24 }}>
-        {available.map(m => {
+        {displayModules.map(m => {
           const pinned = PINNED_MODULES.includes(m.key)
           const sel = selected.has(m.key)
           return (
-            <div key={m.key}
-              onClick={() => !pinned && toggle(m.key)}
-              style={{
-                borderRadius: 12,
-                border: sel ? `2px solid ${m.color}` : '2px solid var(--border)',
-                background: sel ? `${m.color}12` : 'var(--surface)',
-                padding: '14px 14px 12px',
-                cursor: pinned ? 'default' : 'pointer',
-                position: 'relative',
-                transition: 'all 0.15s',
-                opacity: pinned ? 0.7 : 1,
-                userSelect: 'none',
-              }}
-            >
-              {/* Check badge */}
-              <div style={{
-                position: 'absolute', top: 9, right: 9,
-                width: 20, height: 20, borderRadius: '50%',
-                background: sel ? m.color : 'var(--surface2)',
-                border: `2px solid ${sel ? m.color : 'var(--border)'}`,
-                display: 'flex', alignItems: 'center', justifyContent: 'center',
-                transition: 'all 0.15s',
-              }}>
-                {sel && (
-                  <svg width="10" height="10" viewBox="0 0 10 10" fill="none">
-                    <path d="M2 5l2.5 2.5L8 3" stroke="white" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" />
-                  </svg>
-                )}
+            <div key={m.key} onClick={() => !pinned && toggle(m.key)}
+              style={{ borderRadius: 12, border: sel ? `2px solid ${m.color}` : '2px solid var(--border)', background: sel ? `${m.color}12` : 'var(--surface)', padding: '14px 14px 12px', cursor: pinned ? 'default' : 'pointer', position: 'relative', transition: 'all 0.15s', opacity: pinned ? 0.7 : 1, userSelect: 'none' }}>
+              <div style={{ position: 'absolute', top: 9, right: 9, width: 20, height: 20, borderRadius: '50%', background: sel ? m.color : 'var(--surface2)', border: `2px solid ${sel ? m.color : 'var(--border)'}`, display: 'flex', alignItems: 'center', justifyContent: 'center', pointerEvents: 'none' }}>
+                {sel && <svg width="10" height="10" viewBox="0 0 10 10" fill="none"><path d="M2 5l2.5 2.5L8 3" stroke="white" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" /></svg>}
               </div>
-              <div style={{ fontSize: 26, marginBottom: 7 }}>{m.icon}</div>
-              <div style={{ fontSize: 13, fontWeight: 600, color: sel ? m.color : 'var(--text)', marginBottom: 2, paddingRight: 22 }}>{m.label}</div>
-              <div style={{ fontSize: 11, color: 'var(--text3)', lineHeight: 1.4 }}>{m.sub}</div>
-              {pinned && <div style={{ marginTop: 6, fontSize: 10, color: m.color, fontWeight: 600 }}>Always visible</div>}
+              <div style={{ fontSize: 26, marginBottom: 7, pointerEvents: 'none' }}>{m.icon}</div>
+              <div style={{ fontSize: 13, fontWeight: 600, color: sel ? m.color : 'var(--text)', marginBottom: 2, paddingRight: 22, pointerEvents: 'none' }}>{m.label}</div>
+              <div style={{ fontSize: 11, color: 'var(--text3)', lineHeight: 1.4, pointerEvents: 'none' }}>{m.sub}</div>
+              {pinned && <div style={{ marginTop: 6, fontSize: 10, color: m.color, fontWeight: 600, pointerEvents: 'none' }}>Always visible</div>}
             </div>
           )
         })}
       </div>
-
-      <button className="btn btn-primary" onClick={save} disabled={saving || !selected}>
-        {saving ? 'Saving…' : 'Save dashboard icons'}
-      </button>
+      <button className="btn btn-primary" onClick={save} disabled={saving || !selected}>{saving ? 'Saving…' : 'Save dashboard icons'}</button>
     </div>
   )
 }
 
 // ══════════════════════════════════════════════════════════════
-// NOTIFICATION PREFERENCES — shared by all roles
+// NOTIFICATION PREFERENCES
 // ══════════════════════════════════════════════════════════════
 function NotificationPrefsPanel({ userId, role }) {
   const [prefs, setPrefs] = useState(null)
@@ -174,45 +159,25 @@ function NotificationPrefsPanel({ userId, role }) {
   const { toast } = useAppStore()
 
   const SECTIONS = [
-    {
-      title: '📅 Equipment Booking',
-      desc: 'Notifications about your equipment reservations.',
-      roles: ['student', 'user', 'admin'],
-      events: [
-        { key: 'booking_confirmed',   label: 'Booking confirmed' },
-        { key: 'booking_reminder',    label: 'Upcoming booking reminder (1 day before)' },
-        { key: 'booking_cancelled',   label: 'Booking cancelled' },
-      ]
-    },
-    {
-      title: '🎓 Training & Certifications',
-      desc: 'Stay on top of your training status.',
-      roles: ['student'],
-      events: [
-        { key: 'training_approved',   label: 'Training certificate approved' },
-        { key: 'training_expiring',   label: 'Training certificate expiring soon' },
-        { key: 'training_submitted',  label: 'Training submission received (confirmation)' },
-      ]
-    },
-    {
-      title: '📋 Project Management',
-      desc: 'Notifications from the PM workspace.',
-      roles: ['user', 'admin'],
-      events: [
-        { key: 'task_assigned',       label: 'Task assigned to me' },
-        { key: 'task_comment',        label: 'New comment on my task' },
-        { key: 'meeting_added',       label: 'New meeting task assigned to me' },
-        { key: 'task_status_changed', label: 'Task status changed by someone else' },
-      ]
-    },
-    {
-      title: '💬 Lab Messages',
-      desc: 'Messages from the Contact Lab Manager feature.',
-      roles: ['student', 'user', 'admin'],
-      events: [
-        { key: 'message_reply',       label: 'Reply received to my message' },
-      ]
-    },
+    { title: '📅 Equipment Booking', desc: 'Notifications about your equipment reservations.', roles: ['student', 'user', 'admin'], events: [
+      { key: 'booking_confirmed', label: 'Booking confirmed' },
+      { key: 'booking_reminder',  label: 'Upcoming booking reminder (1 day before)' },
+      { key: 'booking_cancelled', label: 'Booking cancelled' },
+    ]},
+    { title: '🎓 Training & Certifications', desc: 'Stay on top of your training status.', roles: ['student'], events: [
+      { key: 'training_approved',  label: 'Training certificate approved' },
+      { key: 'training_expiring',  label: 'Training certificate expiring soon' },
+      { key: 'training_submitted', label: 'Training submission received (confirmation)' },
+    ]},
+    { title: '📋 Project Management', desc: 'Notifications from the PM workspace.', roles: ['user', 'admin'], events: [
+      { key: 'task_assigned',       label: 'Task assigned to me' },
+      { key: 'task_comment',        label: 'New comment on my task' },
+      { key: 'meeting_added',       label: 'New meeting task assigned to me' },
+      { key: 'task_status_changed', label: 'Task status changed by someone else' },
+    ]},
+    { title: '💬 Lab Messages', desc: 'Messages from the Contact Lab Manager feature.', roles: ['student', 'user', 'admin'], events: [
+      { key: 'message_reply', label: 'Reply received to my message' },
+    ]},
   ].filter(s => s.roles.includes(role))
 
   useEffect(() => { if (userId) load() }, [userId])
@@ -221,10 +186,7 @@ function NotificationPrefsPanel({ userId, role }) {
     setLoading(true)
     const { data } = await sb.from('notification_prefs').select('*').eq('user_id', userId).maybeSingle()
     const defaults = {}
-    SECTIONS.forEach(sec => sec.events.forEach(ev => {
-      defaults[ev.key] = true
-      defaults[`email_${ev.key}`] = false
-    }))
+    SECTIONS.forEach(sec => sec.events.forEach(ev => { defaults[ev.key] = true; defaults[`email_${ev.key}`] = false }))
     setPrefs(data ? { ...defaults, ...data } : defaults)
     setLoading(false)
   }
@@ -241,16 +203,11 @@ function NotificationPrefsPanel({ userId, role }) {
 
   return (
     <div>
-      <div style={{ fontSize: 13, color: 'var(--text2)', marginBottom: 20, lineHeight: 1.6 }}>
-        Choose how you want to be notified for each event. <strong>In-app</strong> shows a bell 🔔 notification inside iLab. <strong>Email</strong> sends to your registered email address.
-      </div>
+      <div style={{ fontSize: 13, color: 'var(--text2)', marginBottom: 20, lineHeight: 1.6 }}>Choose how you want to be notified. <strong>In-app</strong> shows a 🔔 inside iLab. <strong>Email</strong> sends to your registered address.</div>
       {SECTIONS.map(sec => (
         <div key={sec.title} style={{ background: 'var(--surface)', border: '1px solid var(--border)', borderRadius: 12, overflow: 'hidden', marginBottom: 20 }}>
           <div style={{ padding: '12px 16px', background: 'var(--surface2)', borderBottom: '1px solid var(--border)', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-            <div>
-              <div style={{ fontWeight: 600, fontSize: 14 }}>{sec.title}</div>
-              <div style={{ fontSize: 12, color: 'var(--text3)', marginTop: 2 }}>{sec.desc}</div>
-            </div>
+            <div><div style={{ fontWeight: 600, fontSize: 14 }}>{sec.title}</div><div style={{ fontSize: 12, color: 'var(--text3)', marginTop: 2 }}>{sec.desc}</div></div>
             <div style={{ display: 'flex', gap: 24, fontSize: 11, fontWeight: 600, color: 'var(--text3)', textTransform: 'uppercase', letterSpacing: '0.06em', flexShrink: 0 }}>
               <span style={{ width: 50, textAlign: 'center' }}>In-app 🔔</span>
               <span style={{ width: 50, textAlign: 'center' }}>Email 📧</span>
@@ -260,18 +217,14 @@ function NotificationPrefsPanel({ userId, role }) {
             <div key={ev.key} style={{ display: 'flex', alignItems: 'center', padding: '12px 16px', borderBottom: i < sec.events.length - 1 ? '1px solid var(--surface2)' : 'none' }}>
               <div style={{ flex: 1, fontSize: 13, fontWeight: 500 }}>{ev.label}</div>
               <div style={{ display: 'flex', gap: 24, flexShrink: 0 }}>
-                <div style={{ width: 50, textAlign: 'center' }}>
-                  <input type="checkbox" checked={!!prefs[ev.key]} onChange={e => setPrefs(p => ({ ...p, [ev.key]: e.target.checked }))} style={{ width: 'auto', cursor: 'pointer', transform: 'scale(1.3)' }} />
-                </div>
-                <div style={{ width: 50, textAlign: 'center' }}>
-                  <input type="checkbox" checked={!!prefs[`email_${ev.key}`]} onChange={e => setPrefs(p => ({ ...p, [`email_${ev.key}`]: e.target.checked }))} style={{ width: 'auto', cursor: 'pointer', transform: 'scale(1.3)' }} />
-                </div>
+                <div style={{ width: 50, textAlign: 'center' }}><input type="checkbox" checked={!!prefs[ev.key]} onChange={e => setPrefs(p => ({ ...p, [ev.key]: e.target.checked }))} style={{ width: 'auto', cursor: 'pointer', transform: 'scale(1.3)' }} /></div>
+                <div style={{ width: 50, textAlign: 'center' }}><input type="checkbox" checked={!!prefs[`email_${ev.key}`]} onChange={e => setPrefs(p => ({ ...p, [`email_${ev.key}`]: e.target.checked }))} style={{ width: 'auto', cursor: 'pointer', transform: 'scale(1.3)' }} /></div>
               </div>
             </div>
           ))}
         </div>
       ))}
-      <div style={{ fontSize: 11, color: 'var(--text3)', marginBottom: 12 }}>Email notifications require your email address to be set in your profile. Contact your admin to enable email delivery.</div>
+      <div style={{ fontSize: 11, color: 'var(--text3)', marginBottom: 12 }}>Email notifications require your email address to be set in your profile.</div>
       <button className="btn btn-primary" onClick={save} disabled={saving}>{saving ? 'Saving…' : 'Save notification preferences'}</button>
     </div>
   )
@@ -318,7 +271,6 @@ function AdminSettings({ session, toast }) {
   const [form, setForm] = useState({ email: '', currentPassword: '', newPassword: '', confirmPassword: '' })
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState('')
-
   async function savePassword() {
     setError('')
     if (!form.newPassword) { setError('Enter a new password.'); return }
@@ -337,7 +289,6 @@ function AdminSettings({ session, toast }) {
     setForm({ email: '', currentPassword: '', newPassword: '', confirmPassword: '' })
     setSaving(false)
   }
-
   return (
     <div className="card" style={{ maxWidth: 440 }}>
       <div style={{ fontWeight: 600, fontSize: 15, marginBottom: 4 }}>🔑 Account Settings</div>
@@ -352,13 +303,14 @@ function AdminSettings({ session, toast }) {
   )
 }
 
-// ── STUDENTS PANEL ──
+// ── STUDENTS PANEL ── with 🎛️ icon button per student
 function StudentsPanel({ toast }) {
   const [students, setStudents] = useState([])
   const [loading, setLoading] = useState(true)
   const [search, setSearch] = useState('')
   const [showModal, setShowModal] = useState(false)
   const [editStudent, setEditStudent] = useState(null)
+  const [iconStudent, setIconStudent] = useState(null) // student whose icons we're editing
   const [importPreview, setImportPreview] = useState(null)
   const [importing, setImporting] = useState(false)
   const fileRef = useRef(null)
@@ -474,6 +426,10 @@ function StudentsPanel({ toast }) {
                 </div>
               </div>
               <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+                {/* 🎛️ Dashboard Icons button per student */}
+                <button className="btn btn-sm" onClick={() => setIconStudent(s)} title="Set allowed dashboard icons">
+                  🎛️ Icons
+                </button>
                 <button className="btn btn-sm" onClick={() => { setEditStudent(s); setShowModal(true) }}>Edit</button>
                 <button className="btn btn-sm" onClick={() => toggleActive(s)}>{s.is_active ? 'Deactivate' : 'Activate'}</button>
                 <button className="btn btn-sm btn-danger" onClick={() => deleteStudent(s.id)}>Delete</button>
@@ -483,6 +439,7 @@ function StudentsPanel({ toast }) {
         ))
       }
       {showModal && <StudentModal student={editStudent} onClose={() => { setShowModal(false); setEditStudent(null) }} onSave={saveStudent} />}
+      {iconStudent && <StudentIconManager student={iconStudent} onClose={(saved) => { setIconStudent(null); if (saved) toast(`Icons updated for ${iconStudent.email || iconStudent.name} ✓`) }} />}
     </div>
   )
 }
@@ -575,13 +532,11 @@ function StaffListPanel({ toast }) {
               <div>
                 <div style={{ fontWeight: 600 }}>
                   <span style={{ fontSize: 11, fontFamily: 'var(--mono)', color: 'var(--text3)', marginRight: 6 }}>#{idx+1}</span>
-                  {s.name}
-                  <span style={{ marginLeft: 8, fontSize: 11, background: '#fff3e0', color: '#ff6b00', borderRadius: 3, padding: '1px 6px', fontWeight: 600 }}>Staff</span>
+                  {s.name}<span style={{ marginLeft: 8, fontSize: 11, background: '#fff3e0', color: '#ff6b00', borderRadius: 3, padding: '1px 6px', fontWeight: 600 }}>Staff</span>
                   {!s.is_active && <span style={{ fontSize: 11, color: 'var(--accent2)', marginLeft: 6 }}>Inactive</span>}
                 </div>
                 <div style={{ fontSize: 12, color: 'var(--text3)', fontFamily: 'var(--mono)', display: 'flex', gap: 10, flexWrap: 'wrap', marginTop: 2 }}>
-                  {s.email && <span>📧 {s.email}</span>}
-                  {s.password && <span>🔑 {s.password}</span>}
+                  {s.email && <span>📧 {s.email}</span>}{s.password && <span>🔑 {s.password}</span>}
                 </div>
                 <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginTop: 8 }}>
                   <span style={{ fontSize: 11, color: 'var(--text3)' }}>Change role:</span>
@@ -615,11 +570,7 @@ function StaffModal({ staff, onClose, onSave }) {
           <div className="field"><label>Email</label><input type="email" value={form.email} onChange={e=>setForm(f=>({...f,email:e.target.value}))} placeholder="netid@illinois.edu" /></div>
         </div>
         <div className="grid-2">
-          <div className="field">
-            <label>Password{staff ? ' (leave blank to keep)' : ' *'}</label>
-            <input type="text" value={form.password} onChange={e=>setForm(f=>({...f,password:e.target.value}))} placeholder={staff ? 'Type to change' : 'Min. 6 chars'} />
-            {staff && <div style={{ fontSize: 11, color: 'var(--text3)', marginTop: 4 }}>Current: {staff.password || '—'}</div>}
-          </div>
+          <div className="field"><label>Password{staff ? ' (leave blank to keep)' : ' *'}</label><input type="text" value={form.password} onChange={e=>setForm(f=>({...f,password:e.target.value}))} placeholder={staff ? 'Type to change' : 'Min. 6 chars'} />{staff && <div style={{ fontSize: 11, color: 'var(--text3)', marginTop: 4 }}>Current: {staff.password || '—'}</div>}</div>
           <div className="field"><label>Phone</label><input value={form.phone} onChange={e=>setForm(f=>({...f,phone:e.target.value}))} /></div>
         </div>
         <div style={{ display:'flex', gap:10, marginTop:8 }}>
