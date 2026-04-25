@@ -2,30 +2,24 @@ import { useState, useEffect } from 'react'
 import { sb } from '../lib/supabase'
 import { useAppStore } from '../store/useAppStore'
 import { ALL_MODULES_META, PINNED_MODULES } from '../components/DashboardIconPicker'
+import DashboardIconPicker from '../components/DashboardIconPicker'
 
 // Build the visible module list for a user based on their role + saved prefs
-// activeModules: string[] | null  — null means "show all allowed"
 function getModules(role, loginMode, activeModules) {
   const roleKey = loginMode === 'solo' ? 'solo' : 'team'
-
   const studentAllowed = ['projects','training','booking','equipmenthub','mileage','labsafety','remessages','profile']
-
   const base = ALL_MODULES_META.filter(m => {
     if (!m.roles.includes(roleKey)) return false
     if (role === 'student' && !studentAllowed.includes(m.key)) return false
     return true
   })
-
-  // If user has saved prefs, filter to those + pinned
   if (activeModules && activeModules.length > 0) {
     const allowed = new Set([...activeModules, ...PINNED_MODULES])
     return base.filter(m => allowed.has(m.key))
   }
-
   return base
 }
 
-// ALL modules visible to students but locked — for blurred card display
 function getAllModulesForStudent() {
   return [
     { key: 'supply',       screen: 'home',          label: 'Supply Inventory',          sub: 'Weekly inspection & export',       icon: '📦', bg: '#e8f2ee', color: '#2a6049' },
@@ -140,9 +134,6 @@ function CardGridView({ modules, onNavigate, mileageUrl, labSafetyUrl, isAdmin, 
   )
 }
 
-// ══════════════════════════════════════════════════════════════
-// STUDENT DASHBOARD VIEW
-// ══════════════════════════════════════════════════════════════
 function StudentDashboardView({ session, onNavigate, mileageUrl, labSafetyUrl, moduleImages }) {
   const [data, setData] = useState({ myProjects: 0, trainingsComplete: 0, trainingsTotal: 4, upcomingBookings: [], pendingCert: false })
   const [loading, setLoading] = useState(true)
@@ -282,9 +273,6 @@ function StudentDashboardView({ session, onNavigate, mileageUrl, labSafetyUrl, m
   )
 }
 
-// ══════════════════════════════════════════════════════════════
-// STAFF/SOLO DASHBOARD VIEW
-// ══════════════════════════════════════════════════════════════
 function DashboardView({ modules, onNavigate, session, mileageUrl, labSafetyUrl, isAdmin, onEditUrl, moduleImages }) {
   const [stats, setStats] = useState({ lowSupplies: 0, activeProjects: 0, students: 0, pendingTraining: 0 })
   const [recentInspections, setRecentInspections] = useState([])
@@ -378,16 +366,14 @@ export default function Dashboard() {
   const [savingUrl, setSavingUrl] = useState(false)
   const [userAccess, setUserAccess] = useState(null)
   const [moduleImages, setModuleImages] = useState({})
-  // activeModules: null = not loaded yet, [] = loaded but empty (show all), string[] = saved prefs
   const [activeModules, setActiveModules] = useState(null)
-  const [prefsLoaded, setPrefsLoaded] = useState(false)
+  const [showPicker, setShowPicker] = useState(false)  // ← manual picker toggle
 
-  const isAdmin  = session?.role === 'admin'
+  const isAdmin   = session?.role === 'admin'
   const isStudent = session?.role === 'student'
-  const isSolo   = session?.loginMode === 'solo'
+  const isSolo    = session?.loginMode === 'solo'
   const loginMode = session?.loginMode || 'team'
 
-  // Load screen access for staff
   useEffect(() => {
     if (session?.userId && (session?.role === 'user' || session?.role === 'admin')) {
       sb.from('user_screen_access').select('screen_key').eq('user_id', session.userId)
@@ -395,9 +381,8 @@ export default function Dashboard() {
     }
   }, [session?.userId])
 
-  // Load dashboard icon prefs
   useEffect(() => {
-    if (!session?.userId) { setPrefsLoaded(true); return }
+    if (!session?.userId) return
     loadDashboardPrefs()
   }, [session?.userId])
 
@@ -411,7 +396,6 @@ export default function Dashboard() {
         setActiveModules(data?.active_modules?.length ? data.active_modules : null)
       }
     } catch(e) {}
-    setPrefsLoaded(true)
   }
 
   const allModules = getModules(session?.role, loginMode, activeModules)
@@ -451,7 +435,6 @@ export default function Dashboard() {
   const months = ['January','February','March','April','May','June','July','August','September','October','November','December']
   const now = new Date()
   const dateStr = `${days[now.getDay()]}, ${months[now.getMonth()]} ${now.getDate()}, ${now.getFullYear()}`
-  const showDashboardToggle = !isStudent
 
   return (
     <div>
@@ -461,7 +444,18 @@ export default function Dashboard() {
           <div style={{ fontSize: 13, color: 'var(--text3)', fontFamily: 'var(--mono)' }}>{dateStr} · ICT Lab</div>
         </div>
         <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
-          {showDashboardToggle && (
+          {/* 🎛️ Customize Icons button — always visible, opens picker directly */}
+          {!isStudent && (
+            <button
+              onClick={() => setShowPicker(true)}
+              style={{ padding: '6px 14px', border: '1px solid var(--border)', borderRadius: 8, background: 'var(--surface)', fontFamily: 'var(--sans)', fontSize: 13, fontWeight: 500, cursor: 'pointer', color: 'var(--text2)', display: 'flex', alignItems: 'center', gap: 6, transition: 'all 0.15s' }}
+              onMouseEnter={e => { e.currentTarget.style.borderColor = 'var(--accent)'; e.currentTarget.style.color = 'var(--accent)' }}
+              onMouseLeave={e => { e.currentTarget.style.borderColor = 'var(--border)'; e.currentTarget.style.color = 'var(--text2)' }}
+            >
+              🎛️ Customize
+            </button>
+          )}
+          {!isStudent && (
             <div style={{ display: 'flex', background: 'var(--surface2)', borderRadius: 'var(--radius)', padding: 3, gap: 2 }}>
               <button onClick={() => switchView('grid')} style={{ padding: '6px 14px', border: 'none', borderRadius: 8, fontFamily: 'var(--sans)', fontSize: 13, fontWeight: 500, cursor: 'pointer', background: view === 'grid' ? 'var(--surface)' : 'transparent', color: view === 'grid' ? 'var(--text)' : 'var(--text2)', transition: 'all 0.15s' }}>⊞ Cards</button>
               <button onClick={() => switchView('dashboard')} style={{ padding: '6px 14px', border: 'none', borderRadius: 8, fontFamily: 'var(--sans)', fontSize: 13, fontWeight: 500, cursor: 'pointer', background: view === 'dashboard' ? 'var(--surface)' : 'transparent', color: view === 'dashboard' ? 'var(--text)' : 'var(--text2)', transition: 'all 0.15s' }}>☰ Dashboard</button>
@@ -480,6 +474,18 @@ export default function Dashboard() {
       {isStudent && view === 'grid'      && (<CardGridView modules={modules} onNavigate={s => setScreen(s)} mileageUrl={mileageUrl} labSafetyUrl={labSafetyUrl} isAdmin={false} onEditUrl={() => {}} moduleImages={moduleImages} isStudent={true} />)}
       {!isStudent && view === 'grid'     && (<CardGridView modules={modules} onNavigate={s => setScreen(s)} mileageUrl={mileageUrl} labSafetyUrl={labSafetyUrl} isAdmin={isAdmin} onEditUrl={(type) => { setEditingUrl(type); setUrlInput(type === 'mileage' ? mileageUrl : labSafetyUrl) }} moduleImages={moduleImages} isStudent={false} />)}
       {!isStudent && view === 'dashboard' && (<DashboardView modules={modules} onNavigate={s => setScreen(s)} session={session} mileageUrl={mileageUrl} labSafetyUrl={labSafetyUrl} isAdmin={isAdmin} onEditUrl={(type) => { setEditingUrl(type); setUrlInput(type === 'mileage' ? mileageUrl : labSafetyUrl) }} moduleImages={moduleImages} />)}
+
+      {/* Icon picker — opened via Customize button */}
+      {showPicker && (
+        <DashboardIconPicker
+          session={session}
+          loginMode={loginMode}
+          onDone={(savedModules) => {
+            setActiveModules(savedModules)
+            setShowPicker(false)
+          }}
+        />
+      )}
 
       {editingUrl !== null && (
         <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.4)', zIndex: 300, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 20 }}>
