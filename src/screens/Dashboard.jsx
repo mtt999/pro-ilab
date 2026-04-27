@@ -22,7 +22,7 @@ function getModules(role, loginMode, activeModules) {
 function getAllModulesForStudent() {
   return [
     { key: 'supply',       screen: 'home',          label: 'Supply Inventory',          sub: 'Weekly inspection & export',       icon: '📦', bg: '#e8f2ee', color: '#2a6049' },
-    { key: 'projects',     screen: 'projects',      label: 'Project Inventory',         sub: 'Materials, storage & database',    icon: '🧪', bg: '#f3eeff', color: '#7c4dbd' },
+    { key: 'projects',     screen: 'projects',      label: 'Project & Material',        sub: 'Inventory, results & workspace',   icon: '🧪', bg: '#f3eeff', color: '#7c4dbd' },
     { key: 'training',     screen: 'training',      label: 'Training Records',          sub: 'Certs, equipment & alarm',         icon: '🎓', bg: '#e0f2fe', color: '#0369a1' },
     { key: 'equipment',    screen: 'equipment',     label: 'Equipment Inventory',       sub: 'Lab equipment tracking',           icon: '🔧', bg: '#fef3c7', color: '#92400e', locked: true },
     { key: 'equipmenthub', screen: 'equipmenthub',  label: 'Equipment',                 sub: 'Info, SOP & standards',            icon: '📚', bg: '#e8f2ee', color: '#1e4d39' },
@@ -109,10 +109,12 @@ function CardGridView({ modules, onNavigate, mileageUrl, labSafetyUrl, isAdmin, 
     { key: 'labsafety', icon: '🦺', label: 'Lab Safety',   sub: 'Manage link', bg: '#fef3c7', color: '#92400e', screen: null },
   ].filter(card => !activeModules || activeModules.includes(card.key))
 
+  const visibleModules = isAdmin ? modules.filter(m => !m.external) : modules
+
   return (
     <>
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(180px, 1fr))', gap: 14 }}>
-        {modules.map(m => <ModuleCard key={m.key} m={m} imgUrl={moduleImages[m.key]} onClick={() => m.external ? setConfirmExternal({ url: m.key === 'mileage' ? mileageUrl : labSafetyUrl }) : onNavigate(m.screen)} />)}
+        {visibleModules.map(m => <ModuleCard key={m.key} m={m} imgUrl={moduleImages[m.key]} onClick={() => m.external ? setConfirmExternal({ url: m.key === 'mileage' ? mileageUrl : labSafetyUrl }) : onNavigate(m.screen)} />)}
         {isAdmin && adminManageCards.map(card => <ModuleCard key={card.key} m={card} imgUrl={moduleImages[card.key]} isAdminManage onClick={() => onEditUrl(card.key)} />)}
       </div>
       {confirmExternal && <ExternalLinkModal url={confirmExternal.url} onConfirm={() => { window.open(confirmExternal.url, '_blank'); setConfirmExternal(null) }} onCancel={() => setConfirmExternal(null)} />}
@@ -196,7 +198,7 @@ function StudentDashboardView({ session, onNavigate, mileageUrl, moduleImages })
   )
 }
 
-function DashboardView({ modules, onNavigate, mileageUrl, labSafetyUrl, isAdmin, onEditUrl, moduleImages }) {
+function DashboardView({ modules, onNavigate, mileageUrl, labSafetyUrl, moduleImages }) {
   const [stats, setStats] = useState({ activeProjects:0, students:0, pendingTraining:0, lowSupplies:0 })
   const [recentInspections, setRecentInspections] = useState([])
   const [loading, setLoading] = useState(true)
@@ -271,7 +273,7 @@ function DashboardView({ modules, onNavigate, mileageUrl, labSafetyUrl, isAdmin,
 }
 
 export default function Dashboard() {
-  const { session, setScreen } = useAppStore()
+  const { session, setScreen, activeModules, setActiveModules } = useAppStore()
   const [view, setView] = useState(() => localStorage.getItem('labstock_view') || 'grid')
   const [mileageUrl, setMileageUrl] = useState('https://bw4qh7p8sn.us-east-1.awsapprunner.com/')
   const [labSafetyUrl, setLabSafetyUrl] = useState('https://canvas.illinois.edu/')
@@ -280,7 +282,6 @@ export default function Dashboard() {
   const [savingUrl, setSavingUrl] = useState(false)
   const [userAccess, setUserAccess] = useState(null)
   const [moduleImages, setModuleImages] = useState({})
-  const [activeModules, setActiveModules] = useState(null)
   const [showPicker, setShowPicker] = useState(false)
 
   const isAdmin   = session?.role === 'admin'
@@ -360,8 +361,8 @@ export default function Dashboard() {
           <div style={{ fontSize:13, color:'var(--text3)', fontFamily:'var(--mono)' }}>{dateStr} · ICT Lab</div>
         </div>
         <div style={{ display:'flex', gap:8, alignItems:'center' }}>
-          {/* Customize button: only for admin and team staff, NOT solo (solo has it in Profile) */}
-          {!isStudent && !isSolo && (
+          {/* Customize button: admin only — staff/students use Profile → Dashboard Icons */}
+          {isAdmin && (
             <button onClick={() => setShowPicker(true)}
               style={{ padding:'6px 14px', border:'1px solid var(--border)', borderRadius:8, background:'var(--surface)', fontFamily:'var(--sans)', fontSize:13, fontWeight:500, cursor:'pointer', color:'var(--text2)', display:'flex', alignItems:'center', gap:6, transition:'all 0.15s' }}
               onMouseEnter={e=>{e.currentTarget.style.borderColor='var(--accent)';e.currentTarget.style.color='var(--accent)'}}
@@ -388,7 +389,7 @@ export default function Dashboard() {
       {isStudent && view==='dashboard' && <StudentDashboardView session={session} onNavigate={s=>setScreen(s)} mileageUrl={mileageUrl} moduleImages={moduleImages} />}
       {isStudent && view==='grid'      && <CardGridView modules={modules} onNavigate={s=>setScreen(s)} mileageUrl={mileageUrl} labSafetyUrl={labSafetyUrl} isAdmin={false} onEditUrl={()=>{}} moduleImages={moduleImages} isStudent={true} activeModules={activeModules} />}
       {!isStudent && view==='grid'     && <CardGridView modules={modules} onNavigate={s=>setScreen(s)} mileageUrl={mileageUrl} labSafetyUrl={labSafetyUrl} isAdmin={isAdmin} onEditUrl={(type)=>{setEditingUrl(type);setUrlInput(type==='mileage'?mileageUrl:labSafetyUrl)}} moduleImages={moduleImages} isStudent={false} activeModules={activeModules} />}
-      {!isStudent && view==='dashboard' && <DashboardView modules={modules} onNavigate={s=>setScreen(s)} mileageUrl={mileageUrl} labSafetyUrl={labSafetyUrl} isAdmin={isAdmin} onEditUrl={(type)=>{setEditingUrl(type);setUrlInput(type==='mileage'?mileageUrl:labSafetyUrl)}} moduleImages={moduleImages} />}
+      {!isStudent && view==='dashboard' && <DashboardView modules={modules} onNavigate={s=>setScreen(s)} mileageUrl={mileageUrl} labSafetyUrl={labSafetyUrl} moduleImages={moduleImages} />}
 
       {showPicker && (
         <DashboardIconPicker session={session} loginMode={loginMode}

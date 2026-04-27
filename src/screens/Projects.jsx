@@ -7,6 +7,244 @@ import ProjectMaterials from './ProjectMaterials'
 import MaterialStorage from './MaterialStorage'
 import ProjectDatabase from './ProjectDatabase'
 
+// ── Result input that adapts to result type ──────────────────
+function ResultInput({ type, value, onChange }) {
+  if (type === 'pass_fail') {
+    return (
+      <div style={{ display: 'flex', gap: 6 }}>
+        {['Pass', 'Fail'].map(opt => (
+          <button key={opt} type="button" onClick={() => onChange(opt)}
+            style={{ padding: '5px 16px', border: `1px solid ${value === opt ? (opt === 'Pass' ? '#2a6049' : '#c84b2f') : 'var(--border)'}`, borderRadius: 6, background: value === opt ? (opt === 'Pass' ? '#e8f2ee' : '#fdf0ed') : 'var(--surface)', color: value === opt ? (opt === 'Pass' ? '#2a6049' : '#c84b2f') : 'var(--text2)', cursor: 'pointer', fontWeight: value === opt ? 700 : 400, fontSize: 13 }}>
+            {opt}
+          </button>
+        ))}
+      </div>
+    )
+  }
+  if (type === 'percentage') {
+    return (
+      <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+        <input type="number" min="0" max="100" step="0.01" value={value} onChange={e => onChange(e.target.value)} style={{ width: 90 }} placeholder="0" />
+        <span style={{ fontSize: 14, color: 'var(--text2)', fontWeight: 600 }}>%</span>
+      </div>
+    )
+  }
+  if (type === 'number') {
+    return <input type="number" step="any" value={value} onChange={e => onChange(e.target.value)} placeholder="Enter number…" />
+  }
+  return <input type="text" value={value} onChange={e => onChange(e.target.value)} placeholder="Enter value…" />
+}
+
+function formatResult(type, value) {
+  if (!value) return '—'
+  if (type === 'percentage') return `${value}%`
+  return value
+}
+
+// ── Equipment test results list + table ───────────────────────
+function EquipmentTestResults() {
+  const { session, toast } = useAppStore()
+  const [equipment, setEquipment]           = useState([])
+  const [search, setSearch]                 = useState('')
+  const [selected, setSelected]             = useState(null)
+  const [results, setResults]               = useState([])
+  const [loadingEquip, setLoadingEquip]     = useState(true)
+  const [loadingResults, setLoadingResults] = useState(false)
+  const [showAddRow, setShowAddRow]         = useState(false)
+  const [saving, setSaving]                 = useState(false)
+  const emptyRow = { date: '', sample_name: '', result_type: 'text', result_value: '', explanation: '' }
+  const [newRow, setNewRow] = useState(emptyRow)
+
+  useEffect(() => { loadEquipment() }, [])
+  useEffect(() => { if (selected) loadResults(selected.id) }, [selected])
+
+  async function loadEquipment() {
+    setLoadingEquip(true)
+    const { data, error } = await sb.from('equipment_inventory').select('id, equipment_name, category').eq('is_active', true).order('category').order('equipment_name')
+    if (error) console.error('equipment_inventory load error:', error)
+    setEquipment(data || [])
+    setLoadingEquip(false)
+  }
+
+  async function loadResults(equipmentId) {
+    setLoadingResults(true)
+    const { data } = await sb.from('test_result_entries').select('*').eq('equipment_id', equipmentId).order('date', { ascending: false })
+    setResults(data || [])
+    setLoadingResults(false)
+  }
+
+  async function addRow() {
+    if (!newRow.date || !newRow.sample_name.trim() || newRow.result_value === '') {
+      toast('Date, sample name and result are required.'); return
+    }
+    setSaving(true)
+    const { data, error } = await sb.from('test_result_entries').insert({
+      equipment_id: selected.id,
+      date: newRow.date,
+      sample_name: newRow.sample_name.trim(),
+      result_type: newRow.result_type,
+      result_value: String(newRow.result_value),
+      explanation: newRow.explanation.trim() || null,
+      created_by: session?.username || null,
+    }).select().single()
+    if (error) { console.error('test_result_entries insert:', error); toast('Save failed: ' + (error.message || error.code)); setSaving(false); return }
+    setResults(prev => [data, ...prev])
+    setNewRow(emptyRow); setShowAddRow(false)
+    setSaving(false); toast('Result added ✓')
+  }
+
+  async function deleteRow(id) {
+    await sb.from('test_result_entries').delete().eq('id', id)
+    setResults(prev => prev.filter(r => r.id !== id))
+    toast('Result deleted.')
+  }
+
+  const RESULT_TYPES = [
+    { value: 'text',       label: 'Text' },
+    { value: 'number',     label: 'Number' },
+    { value: 'pass_fail',  label: 'Pass / Fail' },
+    { value: 'percentage', label: 'Percentage' },
+  ]
+
+  const filtered = equipment.filter(e =>
+    !search.trim() || e.equipment_name?.toLowerCase().includes(search.toLowerCase()) || e.category?.toLowerCase().includes(search.toLowerCase())
+  )
+
+  const categories = [...new Set(equipment.map(e => e.category).filter(Boolean))]
+
+  return (
+    <div style={{ display: 'grid', gridTemplateColumns: '240px 1fr', gap: 16, alignItems: 'start' }}>
+
+      {/* Left: equipment list from equipment_inventory */}
+      <div style={{ background: 'var(--surface)', border: '1px solid var(--border)', borderRadius: 'var(--radius-lg)', overflow: 'hidden' }}>
+        <div style={{ padding: '10px 12px', borderBottom: '1px solid var(--border)' }}>
+          <input value={search} onChange={e => setSearch(e.target.value)} placeholder="🔍 Search equipment…" style={{ width: '100%', fontSize: 13 }} />
+        </div>
+
+        {loadingEquip
+          ? <div style={{ textAlign: 'center', padding: 24 }}><div className="spinner" style={{ margin: '0 auto' }} /></div>
+          : filtered.length === 0
+            ? <div style={{ fontSize: 13, color: 'var(--text3)', textAlign: 'center', padding: 24 }}>No equipment found.</div>
+            : categories.map(cat => {
+                const items = filtered.filter(e => e.category === cat)
+                if (!items.length) return null
+                return (
+                  <div key={cat}>
+                    <div style={{ fontSize: 10, fontWeight: 700, color: 'var(--text3)', fontFamily: 'var(--mono)', textTransform: 'uppercase', letterSpacing: '0.06em', padding: '8px 12px 4px', background: 'var(--surface2)' }}>{cat}</div>
+                    {items.map(e => {
+                      const isActive = selected?.id === e.id
+                      return (
+                        <div key={e.id} onClick={() => setSelected(e)}
+                          style={{ padding: '9px 12px', cursor: 'pointer', background: isActive ? 'var(--accent3-light)' : 'transparent', borderLeft: `3px solid ${isActive ? 'var(--accent3)' : 'transparent'}`, transition: 'all 0.15s' }}>
+                          <div style={{ fontWeight: isActive ? 600 : 400, fontSize: 13, color: isActive ? 'var(--accent3)' : 'var(--text)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{e.equipment_name}</div>
+                        </div>
+                      )
+                    })}
+                  </div>
+                )
+              })
+        }
+      </div>
+
+      {/* Right: results table */}
+      <div>
+        {!selected ? (
+          <div style={{ background: 'var(--surface)', border: '1px solid var(--border)', borderRadius: 'var(--radius-lg)', padding: 48, textAlign: 'center', color: 'var(--text3)' }}>
+            <div style={{ fontSize: 32, marginBottom: 8 }}>👈</div>
+            <div>Select equipment to view its test results</div>
+          </div>
+        ) : (
+          <div>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 }}>
+              <div style={{ fontWeight: 700, fontSize: 16 }}>{selected.equipment_name}</div>
+              <button className="btn btn-sm btn-purple" onClick={() => { setShowAddRow(v => !v); setNewRow(emptyRow) }}>+ Add result</button>
+            </div>
+
+            {/* Add row form */}
+            {showAddRow && (
+              <div className="card" style={{ marginBottom: 16, padding: 16 }}>
+                <div style={{ fontWeight: 600, fontSize: 14, marginBottom: 12 }}>New test result</div>
+                <div className="grid-2" style={{ gap: 10, marginBottom: 10 }}>
+                  <div className="field" style={{ marginBottom: 0 }}>
+                    <label>Date *</label>
+                    <input type="date" value={newRow.date} onChange={e => setNewRow(r => ({ ...r, date: e.target.value }))} />
+                  </div>
+                  <div className="field" style={{ marginBottom: 0 }}>
+                    <label>Sample Name *</label>
+                    <input value={newRow.sample_name} onChange={e => setNewRow(r => ({ ...r, sample_name: e.target.value }))} placeholder="e.g. Sample A-1" />
+                  </div>
+                </div>
+                <div className="grid-2" style={{ gap: 10, marginBottom: 10 }}>
+                  <div className="field" style={{ marginBottom: 0 }}>
+                    <label>Result Type</label>
+                    <select value={newRow.result_type} onChange={e => setNewRow(r => ({ ...r, result_type: e.target.value, result_value: '' }))}>
+                      {RESULT_TYPES.map(t => <option key={t.value} value={t.value}>{t.label}</option>)}
+                    </select>
+                  </div>
+                  <div className="field" style={{ marginBottom: 0 }}>
+                    <label>Result *</label>
+                    <ResultInput type={newRow.result_type} value={newRow.result_value} onChange={v => setNewRow(r => ({ ...r, result_value: v }))} />
+                  </div>
+                </div>
+                <div className="field" style={{ marginBottom: 12 }}>
+                  <label>Explanation</label>
+                  <input value={newRow.explanation} onChange={e => setNewRow(r => ({ ...r, explanation: e.target.value }))} placeholder="Optional notes or explanation…" />
+                </div>
+                <div style={{ display: 'flex', gap: 8 }}>
+                  <button className="btn btn-primary btn-sm" onClick={addRow} disabled={saving}>{saving ? 'Saving…' : 'Save result'}</button>
+                  <button className="btn btn-sm" onClick={() => { setShowAddRow(false); setNewRow(emptyRow) }}>Cancel</button>
+                </div>
+              </div>
+            )}
+
+            {/* Results table */}
+            {loadingResults
+              ? <div style={{ textAlign: 'center', padding: 32 }}><div className="spinner" style={{ margin: '0 auto' }} /></div>
+              : results.length === 0
+                ? (
+                  <div style={{ background: 'var(--surface)', border: '1px solid var(--border)', borderRadius: 'var(--radius-lg)', padding: 48, textAlign: 'center', color: 'var(--text3)' }}>
+                    <div style={{ fontSize: 32, marginBottom: 8 }}>📋</div>
+                    <div>No results yet. Click "+ Add result" to get started.</div>
+                  </div>
+                ) : (
+                  <div style={{ background: 'var(--surface)', border: '1px solid var(--border)', borderRadius: 'var(--radius-lg)', overflow: 'hidden' }}>
+                    <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>
+                      <thead>
+                        <tr style={{ background: 'var(--surface2)', borderBottom: '2px solid var(--border)' }}>
+                          {['Date', 'Sample Name', 'Result', 'Explanation', ''].map(h => (
+                            <th key={h} style={{ padding: '10px 14px', textAlign: 'left', fontWeight: 600, fontSize: 11, color: 'var(--text3)', fontFamily: 'var(--mono)', textTransform: 'uppercase', letterSpacing: '0.06em', whiteSpace: 'nowrap' }}>{h}</th>
+                          ))}
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {results.map((r, i) => (
+                          <tr key={r.id} style={{ borderBottom: i < results.length - 1 ? '1px solid var(--surface2)' : 'none' }}>
+                            <td style={{ padding: '10px 14px', fontFamily: 'var(--mono)', fontSize: 12, color: 'var(--text2)', whiteSpace: 'nowrap' }}>{r.date}</td>
+                            <td style={{ padding: '10px 14px', fontWeight: 500 }}>{r.sample_name}</td>
+                            <td style={{ padding: '10px 14px' }}>
+                              {r.result_type === 'pass_fail'
+                                ? <span style={{ fontWeight: 700, color: r.result_value === 'Pass' ? '#2a6049' : '#c84b2f', background: r.result_value === 'Pass' ? '#e8f2ee' : '#fdf0ed', padding: '2px 12px', borderRadius: 99, fontSize: 12 }}>{r.result_value}</span>
+                                : <span style={{ fontFamily: r.result_type !== 'text' ? 'var(--mono)' : 'inherit', fontWeight: 600 }}>{formatResult(r.result_type, r.result_value)}</span>
+                              }
+                            </td>
+                            <td style={{ padding: '10px 14px', color: 'var(--text2)', maxWidth: 220, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{r.explanation || '—'}</td>
+                            <td style={{ padding: '10px 14px', textAlign: 'right' }}>
+                              <button onClick={() => deleteRow(r.id)} style={{ border: 'none', background: 'none', cursor: 'pointer', color: 'var(--text3)', fontSize: 13, padding: '0 4px' }}>🗑</button>
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                )
+            }
+          </div>
+        )}
+      </div>
+    </div>
+  )
+}
+
 function InfoCell({ label, value }) {
   return (
     <div>
@@ -289,6 +527,7 @@ function NewProjectModal({ users, onClose, onCreated }) {
 
 export default function Projects() {
   const { toast } = useAppStore()
+  const [mainTab, setMainTab] = useState('inventory')
   const [allProjects, setAllProjects] = useState([])
   const [projects, setProjects] = useState([])
   const [users, setUsers] = useState([])
@@ -338,87 +577,178 @@ export default function Projects() {
     { key: 'database', label: '4 · Database' },
   ]
 
+  const [resultsTab, setResultsTab] = useState('equipment')
+  const [workspaceTab, setWorkspaceTab] = useState('members')
+
+  const mainTabs = [
+    { key: 'inventory', label: '📦 Material Inventory' },
+    { key: 'results',   label: '🧪 Project Test Results' },
+    { key: 'workspace', label: '💼 Workspace' },
+  ]
+
   return (
     <div>
       <div className="section-header" style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-        <div className="section-title">Projects</div>
+        <div className="section-title">Project & Material</div>
         <HelpPanel screen="projects" />
-        <button className="btn btn-sm btn-purple" onClick={() => setShowNewModal(true)}>+ New project</button>
       </div>
 
-      <div style={{ display: 'flex', gap: 8, marginBottom: 12, flexWrap: 'wrap' }}>
-        {['all','active','on hold','completed'].map(f => (
-          <button key={f} className={'filter-btn' + (filter === f ? ' active' : '')} onClick={() => setFilter(f)}>
-            {f === 'all' ? 'All' : f.charAt(0).toUpperCase() + f.slice(1)}
+      {/* Main tabs */}
+      <div style={{ display: 'flex', borderBottom: '1px solid var(--border)', marginBottom: 24 }}>
+        {mainTabs.map(t => (
+          <button key={t.key} onClick={() => setMainTab(t.key)}
+            style={{ padding: '10px 22px', border: 'none', background: 'transparent', fontFamily: 'var(--sans)', fontSize: 14, fontWeight: 500, cursor: 'pointer', color: mainTab === t.key ? 'var(--accent3)' : 'var(--text2)', borderBottom: `2px solid ${mainTab === t.key ? 'var(--accent3)' : 'transparent'}`, whiteSpace: 'nowrap', transition: 'all 0.15s' }}>
+            {t.label}
           </button>
         ))}
       </div>
 
-      <AdvancedSearch projects={allProjects} users={users} onResults={setProjects} onClear={() => setProjects(allProjects)} />
+      {/* ── Tab 1: Material Inventory ── */}
+      {mainTab === 'inventory' && (
+        <>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 12 }}>
+            <button className="btn btn-sm btn-purple" onClick={() => setShowNewModal(true)}>+ Add new</button>
+          </div>
 
-      <div style={{ display: 'grid', gridTemplateColumns: '240px 1fr', gap: 16, alignItems: 'start' }}>
-        <div style={{ position: 'sticky', top: 72 }}>
-          {loading ? (
-            <div style={{ textAlign: 'center', padding: 24 }}><div className="spinner" style={{ margin: '0 auto' }} /></div>
-          ) : projects.length === 0 ? (
-            <div className="empty-state" style={{ padding: 24 }}><div className="empty-icon">🧪</div><div>No projects found.</div></div>
-          ) : projects.map((p, idx) => {
-            const isActive = activeProjectId === p.id
-            return (
-              <div key={p.id} onClick={() => { setActiveProjectId(p.id); setSubTab('info') }}
-                style={{ background: isActive ? 'var(--accent3-light)' : 'var(--surface)', border: `1px solid ${isActive ? 'var(--accent3)' : 'var(--border)'}`, borderRadius: 'var(--radius-lg)', padding: '10px 14px', marginBottom: 8, cursor: 'pointer', transition: 'all 0.15s' }}>
-                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 8 }}>
-                  <div style={{ minWidth: 0 }}>
-                    <div style={{ fontSize: 11, fontFamily: 'var(--mono)', color: 'var(--text3)', marginBottom: 1 }}>#{idx + 1}</div>
-                    <div style={{ fontWeight: 600, fontSize: 14, color: isActive ? 'var(--accent3)' : 'var(--text)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{p.name}</div>
-                    {p.project_id && <div style={{ fontSize: 11, fontFamily: 'var(--mono)', color: 'var(--text3)', marginTop: 2, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{p.project_id}</div>}
-                  </div>
-                  <span className={`badge ${statusBadge(p.status)}`} style={{ fontSize: 10, flexShrink: 0, padding: '2px 8px' }}>{p.status}</span>
-                </div>
-              </div>
-            )
-          })}
-        </div>
+          <div style={{ display: 'flex', gap: 8, marginBottom: 12, flexWrap: 'wrap' }}>
+            {['all','active','on hold','completed'].map(f => (
+              <button key={f} className={'filter-btn' + (filter === f ? ' active' : '')} onClick={() => setFilter(f)}>
+                {f === 'all' ? 'All' : f.charAt(0).toUpperCase() + f.slice(1)}
+              </button>
+            ))}
+          </div>
 
-        <div>
-          {!activeProject ? (
-            <div style={{ background: 'var(--surface)', border: '1px solid var(--border)', borderRadius: 'var(--radius-lg)', padding: 48, textAlign: 'center', color: 'var(--text3)' }}>
-              <div style={{ fontSize: 32, marginBottom: 8 }}>👈</div>
-              <div>Select a project from the list</div>
-            </div>
-          ) : (
-            <div>
-              <div style={{ background: 'var(--surface)', border: '1px solid var(--border)', borderRadius: 'var(--radius-lg)', padding: '16px 20px', marginBottom: 4 }}>
-                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 12 }}>
-                  <div>
-                    <div style={{ fontWeight: 700, fontSize: 17 }}>{activeProject.name}</div>
-                    <div style={{ fontSize: 12, fontFamily: 'var(--mono)', color: 'var(--text3)', marginTop: 2 }}>
-                      {[activeProject.project_id && `Title: ${activeProject.project_id}`, activeProject.cfop && `CFOP: ${activeProject.cfop}`].filter(Boolean).join(' · ')}
+          <AdvancedSearch projects={allProjects} users={users} onResults={setProjects} onClear={() => setProjects(allProjects)} />
+
+          <div style={{ display: 'grid', gridTemplateColumns: '240px 1fr', gap: 16, alignItems: 'start' }}>
+            <div style={{ position: 'sticky', top: 72 }}>
+              {loading ? (
+                <div style={{ textAlign: 'center', padding: 24 }}><div className="spinner" style={{ margin: '0 auto' }} /></div>
+              ) : projects.length === 0 ? (
+                <div className="empty-state" style={{ padding: 24 }}><div className="empty-icon">🧪</div><div>No projects found.</div></div>
+              ) : projects.map((p, idx) => {
+                const isActive = activeProjectId === p.id
+                return (
+                  <div key={p.id} onClick={() => { setActiveProjectId(p.id); setSubTab('info') }}
+                    style={{ background: isActive ? 'var(--accent3-light)' : 'var(--surface)', border: `1px solid ${isActive ? 'var(--accent3)' : 'var(--border)'}`, borderRadius: 'var(--radius-lg)', padding: '10px 14px', marginBottom: 8, cursor: 'pointer', transition: 'all 0.15s' }}>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 8 }}>
+                      <div style={{ minWidth: 0 }}>
+                        <div style={{ fontSize: 11, fontFamily: 'var(--mono)', color: 'var(--text3)', marginBottom: 1 }}>#{idx + 1}</div>
+                        <div style={{ fontWeight: 600, fontSize: 14, color: isActive ? 'var(--accent3)' : 'var(--text)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{p.name}</div>
+                        {p.project_id && <div style={{ fontSize: 11, fontFamily: 'var(--mono)', color: 'var(--text3)', marginTop: 2, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{p.project_id}</div>}
+                      </div>
+                      <span className={`badge ${statusBadge(p.status)}`} style={{ fontSize: 10, flexShrink: 0, padding: '2px 8px' }}>{p.status}</span>
                     </div>
                   </div>
-                  <button className="btn btn-sm btn-danger" onClick={() => deleteProject(activeProject.id)}>Delete</button>
+                )
+              })}
+            </div>
+
+            <div>
+              {!activeProject ? (
+                <div style={{ background: 'var(--surface)', border: '1px solid var(--border)', borderRadius: 'var(--radius-lg)', padding: 48, textAlign: 'center', color: 'var(--text3)' }}>
+                  <div style={{ fontSize: 32, marginBottom: 8 }}>👈</div>
+                  <div>Select a project from the list</div>
                 </div>
-              </div>
-              <div style={{ display: 'flex', borderBottom: '1px solid var(--border)', marginBottom: 0, background: 'var(--surface)', overflowX: 'auto' }}>
-                {subTabs.map(t => (
-                  <button key={t.key} onClick={() => setSubTab(t.key)}
-                    style={{ padding: '11px 16px', border: 'none', background: 'transparent', fontFamily: 'var(--sans)', fontSize: 13, fontWeight: 500, cursor: 'pointer', color: subTab === t.key ? 'var(--accent3)' : 'var(--text2)', borderBottom: `2px solid ${subTab === t.key ? 'var(--accent3)' : 'transparent'}`, whiteSpace: 'nowrap', transition: 'all 0.15s' }}>
-                    {t.label}
-                  </button>
-                ))}
-              </div>
-              <div style={{ background: 'var(--surface)', border: '1px solid var(--border)', borderTop: 'none', borderRadius: '0 0 var(--radius-lg) var(--radius-lg)', padding: 24 }}>
-                {subTab === 'info'      && <ProjectInfo project={activeProject} users={users} onSaved={loadActiveProject} />}
-                {subTab === 'materials' && <ProjectMaterials project={activeProject} />}
-                {subTab === 'storage'   && <MaterialStorage project={activeProject} />}
-                {subTab === 'database'  && <ProjectDatabase project={activeProject} />}
-              </div>
+              ) : (
+                <div>
+                  <div style={{ background: 'var(--surface)', border: '1px solid var(--border)', borderRadius: 'var(--radius-lg)', padding: '16px 20px', marginBottom: 4 }}>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 12 }}>
+                      <div>
+                        <div style={{ fontWeight: 700, fontSize: 17 }}>{activeProject.name}</div>
+                        <div style={{ fontSize: 12, fontFamily: 'var(--mono)', color: 'var(--text3)', marginTop: 2 }}>
+                          {[activeProject.project_id && `Title: ${activeProject.project_id}`, activeProject.cfop && `CFOP: ${activeProject.cfop}`].filter(Boolean).join(' · ')}
+                        </div>
+                      </div>
+                      <button className="btn btn-sm btn-danger" onClick={() => deleteProject(activeProject.id)}>Delete</button>
+                    </div>
+                  </div>
+                  <div style={{ display: 'flex', borderBottom: '1px solid var(--border)', marginBottom: 0, background: 'var(--surface)', overflowX: 'auto' }}>
+                    {subTabs.map(t => (
+                      <button key={t.key} onClick={() => setSubTab(t.key)}
+                        style={{ padding: '11px 16px', border: 'none', background: 'transparent', fontFamily: 'var(--sans)', fontSize: 13, fontWeight: 500, cursor: 'pointer', color: subTab === t.key ? 'var(--accent3)' : 'var(--text2)', borderBottom: `2px solid ${subTab === t.key ? 'var(--accent3)' : 'transparent'}`, whiteSpace: 'nowrap', transition: 'all 0.15s' }}>
+                        {t.label}
+                      </button>
+                    ))}
+                  </div>
+                  <div style={{ background: 'var(--surface)', border: '1px solid var(--border)', borderTop: 'none', borderRadius: '0 0 var(--radius-lg) var(--radius-lg)', padding: 24 }}>
+                    {subTab === 'info'      && <ProjectInfo project={activeProject} users={users} onSaved={loadActiveProject} />}
+                    {subTab === 'materials' && <ProjectMaterials project={activeProject} />}
+                    {subTab === 'storage'   && <MaterialStorage project={activeProject} />}
+                    {subTab === 'database'  && <ProjectDatabase project={activeProject} />}
+                  </div>
+                </div>
+              )}
+            </div>
+          </div>
+
+          {showNewModal && <NewProjectModal users={users} onClose={() => setShowNewModal(false)} onCreated={(id) => { setActiveProjectId(id); loadProjects() }} />}
+        </>
+      )}
+
+      {/* ── Tab 2: Project Test Results ── */}
+      {mainTab === 'results' && (
+        <div>
+          <div style={{ display: 'flex', borderBottom: '1px solid var(--border)', marginBottom: 24 }}>
+            {[
+              { key: 'equipment', label: '🔧 Equipment' },
+              { key: 'database',  label: '🗄️ Database' },
+            ].map(t => (
+              <button key={t.key} onClick={() => setResultsTab(t.key)}
+                style={{ padding: '10px 22px', border: 'none', background: 'transparent', fontFamily: 'var(--sans)', fontSize: 14, fontWeight: 500, cursor: 'pointer', color: resultsTab === t.key ? 'var(--accent3)' : 'var(--text2)', borderBottom: `2px solid ${resultsTab === t.key ? 'var(--accent3)' : 'transparent'}`, whiteSpace: 'nowrap', transition: 'all 0.15s' }}>
+                {t.label}
+              </button>
+            ))}
+          </div>
+          {resultsTab === 'equipment' && <EquipmentTestResults />}
+          {resultsTab === 'database' && (
+            <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', padding: '60px 20px', color: 'var(--text3)', textAlign: 'center' }}>
+              <div style={{ fontSize: 44, marginBottom: 14 }}>🗄️</div>
+              <div style={{ fontWeight: 700, fontSize: 17, color: 'var(--text)', marginBottom: 8 }}>Database</div>
+              <div style={{ fontSize: 13, color: 'var(--text2)', maxWidth: 340, lineHeight: 1.6 }}>Test result database records will appear here.</div>
             </div>
           )}
         </div>
-      </div>
+      )}
 
-      {showNewModal && <NewProjectModal users={users} onClose={() => setShowNewModal(false)} onCreated={(id) => { setActiveProjectId(id); loadProjects() }} />}
+      {/* ── Tab 3: Workspace ── */}
+      {mainTab === 'workspace' && (
+        <div>
+          <div style={{ display: 'flex', borderBottom: '1px solid var(--border)', marginBottom: 24 }}>
+            {[
+              { key: 'members', label: '👥 Project Members' },
+              { key: 'submit',  label: '📤 Submit Results' },
+              { key: 'links',   label: '🔗 Links' },
+            ].map(t => (
+              <button key={t.key} onClick={() => setWorkspaceTab(t.key)}
+                style={{ padding: '10px 22px', border: 'none', background: 'transparent', fontFamily: 'var(--sans)', fontSize: 14, fontWeight: 500, cursor: 'pointer', color: workspaceTab === t.key ? 'var(--accent3)' : 'var(--text2)', borderBottom: `2px solid ${workspaceTab === t.key ? 'var(--accent3)' : 'transparent'}`, whiteSpace: 'nowrap', transition: 'all 0.15s' }}>
+                {t.label}
+              </button>
+            ))}
+          </div>
+          {workspaceTab === 'members' && (
+            <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', padding: '60px 20px', color: 'var(--text3)', textAlign: 'center' }}>
+              <div style={{ fontSize: 44, marginBottom: 14 }}>👥</div>
+              <div style={{ fontWeight: 700, fontSize: 17, color: 'var(--text)', marginBottom: 8 }}>Project Members</div>
+              <div style={{ fontSize: 13, color: 'var(--text2)', maxWidth: 340, lineHeight: 1.6 }}>Project member assignments will appear here.</div>
+            </div>
+          )}
+          {workspaceTab === 'submit' && (
+            <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', padding: '60px 20px', color: 'var(--text3)', textAlign: 'center' }}>
+              <div style={{ fontSize: 44, marginBottom: 14 }}>📤</div>
+              <div style={{ fontWeight: 700, fontSize: 17, color: 'var(--text)', marginBottom: 8 }}>Submit Results</div>
+              <div style={{ fontSize: 13, color: 'var(--text2)', maxWidth: 340, lineHeight: 1.6 }}>Submit and track project test results here.</div>
+            </div>
+          )}
+          {workspaceTab === 'links' && (
+            <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', padding: '60px 20px', color: 'var(--text3)', textAlign: 'center' }}>
+              <div style={{ fontSize: 44, marginBottom: 14 }}>🔗</div>
+              <div style={{ fontWeight: 700, fontSize: 17, color: 'var(--text)', marginBottom: 8 }}>Links</div>
+              <div style={{ fontSize: 13, color: 'var(--text2)', maxWidth: 340, lineHeight: 1.6 }}>Useful project links and references will appear here.</div>
+            </div>
+          )}
+        </div>
+      )}
     </div>
   )
 }

@@ -36,7 +36,7 @@ export const useAppStore = create((set, get) => ({
   },
 
   // ── Navigation ──
-  screen: 'home',
+  screen: 'dashboard',
   setScreen: (s) => set({ screen: s }),
 
   // ── Inspection state ──
@@ -46,6 +46,10 @@ export const useAppStore = create((set, get) => ({
   // ── Last completed inspection record ──
   lastRecord: null,
   setLastRecord: (r) => set({ lastRecord: r }),
+
+  // ── Dashboard module selection ──
+  activeModules: null,
+  setActiveModules: (m) => set({ activeModules: m }),
 
   // ── Current project ──
   currentProjectId: null,

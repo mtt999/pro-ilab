@@ -25,7 +25,7 @@ import DashboardIconPicker from './components/DashboardIconPicker'
 const IS_ADMIN_ROUTE = window.location.pathname.endsWith('/admin') || window.location.pathname.endsWith('/admin/')
 
 export default function App() {
-  const { session, screen, refreshCache, setScreen } = useAppStore()
+  const { session, screen, refreshCache, setScreen, setActiveModules } = useAppStore()
   const [loading, setLoading] = useState(true)
   const [userAccess, setUserAccess] = useState(null)
   const [showIconPicker, setShowIconPicker] = useState(null)
@@ -45,11 +45,12 @@ export default function App() {
     } else if (!session) {
       localStorage.removeItem('ilab_login_mode')
       setShowIconPicker(null)
+      setActiveModules(null)
     }
   }, [session])
 
   useEffect(() => {
-    if (!session?.loginMode) { setShowIconPicker(false); return }
+    if (!session?.loginMode) return
     checkFirstLogin(session.userId, session.loginMode)
   }, [session?.loginMode, session?.userId])
 
@@ -79,21 +80,17 @@ export default function App() {
           if (data?.length) setUserAccess(new Set(data.map(r => r.screen_key)))
           else setUserAccess(null)
         })
+        .catch(() => setUserAccess(null))
     } else {
       setUserAccess(null)
     }
   }, [session?.userId])
 
   useEffect(() => {
-    if (session && screen === 'home') setScreen('dashboard')
-  }, [session])
-
-  useEffect(() => {
     if (session?.role === 'student') {
       const allowed = ['dashboard', 'projects', 'project-detail', 'training', 'profile', 'equipmenthub', 'booking', 'remessages']
       if (!allowed.includes(screen)) setScreen('dashboard')
     }
-    if (screen === 'pm' && session?.role === 'student') setScreen('dashboard')
     if ((session?.role === 'user' || session?.role === 'admin') && userAccess && screen !== 'dashboard' && screen !== 'profile') {
       if (!userAccess.has(screen)) setScreen('dashboard')
     }
@@ -138,8 +135,9 @@ export default function App() {
         <DashboardIconPicker
           session={session}
           loginMode={session.loginMode}
-          onDone={() => {
+          onDone={(modules) => {
             if (!session.userId) localStorage.setItem('ilab_admin_dashboard_set', 'true')
+            if (modules) setActiveModules(modules)
             setShowIconPicker(false)
           }}
         />

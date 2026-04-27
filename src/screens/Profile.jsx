@@ -129,6 +129,7 @@ function SoloProfile({ session }) {
           { key: 'dashboard', label: '🎛️ Dashboard Icons' },
           { key: 'password',  label: '🔑 Password' },
           { key: 'photo',     label: '🖼️ Photo' },
+          { key: 'notifs',    label: '🔔 Notifications' },
         ].map(t => (
           <button key={t.key} onClick={() => setActiveTab(t.key)}
             style={{ padding: '10px 22px', border: 'none', background: 'transparent', fontFamily: 'var(--sans)', fontSize: 14, fontWeight: 500, cursor: 'pointer', color: activeTab === t.key ? '#534AB7' : 'var(--text2)', borderBottom: `2px solid ${activeTab === t.key ? '#534AB7' : 'transparent'}`, transition: 'all 0.15s', whiteSpace: 'nowrap' }}>
@@ -147,6 +148,8 @@ function SoloProfile({ session }) {
       )}
 
       {activeTab === 'dashboard' && <DashboardIconsPanel session={session} />}
+
+      {activeTab === 'notifs' && <NotificationPrefsPanel userId={session?.userId} role="student" />}
 
       {activeTab === 'password' && (
         <div className="card">
@@ -207,8 +210,13 @@ function DashboardIconsPanel({ session }) {
   useEffect(() => { load() }, [session?.userId])
 
   async function load() {
-    if (!session?.userId) return
     try {
+      if (!session?.userId) {
+        // admin — persisted in localStorage
+        const saved = localStorage.getItem('ilab_admin_modules')
+        setSelected(new Set(saved ? JSON.parse(saved) : available.map(m => m.key)))
+        return
+      }
       if (isSolo) {
         const { data } = await sb.from('solo_users').select('active_modules').eq('id', session.userId).maybeSingle()
         setSelected(new Set(data?.active_modules?.length ? data.active_modules : available.map(m => m.key)))
@@ -242,7 +250,10 @@ function DashboardIconsPanel({ session }) {
     setSaving(true)
     const modules = Array.from(selected)
     try {
-      if (isSolo) {
+      if (!session?.userId) {
+        localStorage.setItem('ilab_admin_modules', JSON.stringify(modules))
+        localStorage.setItem('ilab_admin_dashboard_set', 'true')
+      } else if (isSolo) {
         await sb.from('solo_users').update({ active_modules: modules, has_set_dashboard: true }).eq('id', session.userId)
       } else {
         await sb.from('user_dashboard_prefs').upsert({ user_id: session.userId, active_modules: modules, has_set_dashboard: true })
@@ -405,8 +416,8 @@ function AdminProfile() {
       <div style={{ display: 'flex', borderBottom: '1px solid var(--border)', marginBottom: 24, overflowX: 'auto' }}>
         {[
           { key: 'admin',    label: '🔑 Admin Settings' },
-          { key: 'students', label: '👥 Students' },
-          { key: 'staff',    label: '👨‍💼 Staff & Access' },
+          { key: 'students', label: '👥 Lab Users' },
+          { key: 'staff',    label: '👨‍💼 Lab Managers' },
           { key: 'icons',    label: '🖼️ Icon Images' },
           { key: 'dashboard',label: '🎛️ Dashboard Icons' },
           { key: 'notifs',   label: '🔔 Notifications' },
@@ -540,10 +551,10 @@ function StudentsPanel({ toast }) {
   return (
     <div>
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
-        <div style={{ fontSize: 14, color: 'var(--text2)' }}>{students.length} student{students.length !== 1 ? 's' : ''}</div>
+        <div style={{ fontSize: 14, color: 'var(--text2)' }}>{students.length} lab user{students.length !== 1 ? 's' : ''}</div>
         <div style={{ display: 'flex', gap: 8 }}>
           <button className="btn btn-sm" onClick={() => fileRef.current?.click()}>⬆️ Import Excel</button>
-          <button className="btn btn-sm btn-primary" onClick={() => { setEditStudent(null); setShowModal(true) }}>+ Add student</button>
+          <button className="btn btn-sm btn-primary" onClick={() => { setEditStudent(null); setShowModal(true) }}>+ Add lab user</button>
         </div>
       </div>
       <div style={{ position: 'relative', marginBottom: 16 }}>
@@ -564,7 +575,7 @@ function StudentsPanel({ toast }) {
         </div>
       )}
       {loading ? <div style={{ textAlign: 'center', padding: 24 }}><div className="spinner" style={{ margin: '0 auto' }} /></div>
-        : filtered.length === 0 ? <div className="empty-state"><div className="empty-icon">👥</div>{search ? 'No students match your search.' : 'No students yet.'}</div>
+        : filtered.length === 0 ? <div className="empty-state"><div className="empty-icon">👥</div>{search ? 'No lab users match your search.' : 'No lab users yet.'}</div>
         : filtered.map((s, idx) => (
           <div key={s.id} className="card" style={{ padding: '12px 18px', marginBottom: 10, opacity: s.is_active ? 1 : 0.5 }}>
             <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: 8 }}>
@@ -638,20 +649,20 @@ function StaffPanel({ toast }) {
   return (
     <div>
       <div style={{ display: 'flex', borderBottom: '1px solid var(--border)', marginBottom: 20 }}>
-        {[{ key: 'list', label: '👨‍💼 Staff Members' }, { key: 'access', label: '🗂️ Access Control' }].map(t => (
+        {[{ key: 'list', label: '👨‍💼 Lab Managers' }, { key: 'access', label: '🗂️ Access Control' }].map(t => (
           <button key={t.key} onClick={() => setStaffTab(t.key)}
             style={{ padding: '8px 20px', border: 'none', background: 'transparent', fontFamily: 'var(--sans)', fontSize: 13, fontWeight: 500, cursor: 'pointer', color: staffTab === t.key ? 'var(--accent)' : 'var(--text2)', borderBottom: `2px solid ${staffTab === t.key ? 'var(--accent)' : 'transparent'}`, transition: 'all 0.15s' }}>
             {t.label}
           </button>
         ))}
       </div>
-      {staffTab === 'list'   && <StaffListPanel toast={toast} />}
+      {staffTab === 'list'   && <StaffListPanel toast={toast} showPasswords={true} />}
       {staffTab === 'access' && <AccessControl toast={toast} />}
     </div>
   )
 }
 
-function StaffListPanel({ toast }) {
+function StaffListPanel({ toast, showPasswords = false }) {
   const [staff, setStaff] = useState([])
   const [loading, setLoading] = useState(true)
   const [showModal, setShowModal] = useState(false)
@@ -673,11 +684,11 @@ function StaffListPanel({ toast }) {
   return (
     <div>
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 }}>
-        <div style={{ fontSize: 14, color: 'var(--text2)' }}>{staff.length} staff member{staff.length !== 1 ? 's' : ''}</div>
-        <button className="btn btn-sm btn-primary" onClick={() => { setEditStaff(null); setShowModal(true) }}>+ Add staff</button>
+        <div style={{ fontSize: 14, color: 'var(--text2)' }}>{staff.length} lab manager{staff.length !== 1 ? 's' : ''}</div>
+        <button className="btn btn-sm btn-primary" onClick={() => { setEditStaff(null); setShowModal(true) }}>+ Add lab manager</button>
       </div>
       {loading ? <div style={{ textAlign: 'center', padding: 24 }}><div className="spinner" style={{ margin: '0 auto' }} /></div>
-        : staff.length === 0 ? <div className="empty-state"><div className="empty-icon">👨‍💼</div>No staff members yet.</div>
+        : staff.length === 0 ? <div className="empty-state"><div className="empty-icon">👨‍💼</div>No lab managers yet.</div>
         : staff.map((s, idx) => (
           <div key={s.id} className="card" style={{ padding: '12px 18px', marginBottom: 10, opacity: s.is_active ? 1 : 0.5 }}>
             <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: 8 }}>
@@ -688,7 +699,7 @@ function StaffListPanel({ toast }) {
                   {!s.is_active && <span style={{ fontSize: 11, color: 'var(--accent2)', marginLeft: 6 }}>Inactive</span>}
                 </div>
                 <div style={{ fontSize: 12, color: 'var(--text3)', fontFamily: 'var(--mono)', display: 'flex', gap: 10, flexWrap: 'wrap', marginTop: 2 }}>
-                  {s.email && <span>📧 {s.email}</span>}{s.password && <span>🔑 {s.password}</span>}
+                  {s.email && <span>📧 {s.email}</span>}{showPasswords && s.password && <span>🔑 {s.password}</span>}
                 </div>
                 <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginTop: 8 }}>
                   <span style={{ fontSize: 11, color: 'var(--text3)' }}>Change role:</span>
@@ -716,7 +727,7 @@ function StaffModal({ staff, onClose, onSave }) {
   return (
     <div style={{ position:'fixed', inset:0, background:'rgba(0,0,0,0.35)', zIndex:200, display:'flex', alignItems:'center', justifyContent:'center', padding:20 }}>
       <div style={{ background:'var(--surface)', borderRadius:'var(--radius-lg)', padding:28, maxWidth:480, width:'100%', border:'1px solid var(--border)' }}>
-        <div style={{ fontWeight:600, fontSize:16, marginBottom:20 }}>{staff ? 'Edit staff member' : 'Add staff member'}</div>
+        <div style={{ fontWeight:600, fontSize:16, marginBottom:20 }}>{staff ? 'Edit lab manager' : 'Add lab manager'}</div>
         <div className="grid-2">
           <div className="field"><label>Full Name *</label><input value={form.name} onChange={e=>setForm(f=>({...f,name:e.target.value}))} autoFocus /></div>
           <div className="field"><label>Email</label><input type="email" value={form.email} onChange={e=>setForm(f=>({...f,email:e.target.value}))} placeholder="netid@illinois.edu" /></div>
@@ -746,6 +757,79 @@ function SupervisorSelect({ value, onChange }) {
 }
 
 // ══════════════════════════════════════════════════════════════
+// STAFF: MANAGE STUDENT DASHBOARD ICONS
+// ══════════════════════════════════════════════════════════════
+function StaffStudentIconManager() {
+  const { toast } = useAppStore()
+  const [students, setStudents] = useState([])
+  const [loading, setLoading] = useState(true)
+  const [search, setSearch] = useState('')
+  const [iconStudent, setIconStudent] = useState(null)
+
+  useEffect(() => { load() }, [])
+
+  async function load() {
+    setLoading(true)
+    const { data } = await sb.from('users').select('*').eq('role', 'student').order('name')
+    setStudents(data || [])
+    setLoading(false)
+  }
+
+  const filtered = students.filter(s => {
+    if (!search.trim()) return true
+    const q = search.toLowerCase()
+    return sFirstName(s).toLowerCase().includes(q) || sLastName(s).toLowerCase().includes(q) || sEmail(s).toLowerCase().includes(q)
+  })
+
+  return (
+    <div>
+      <div className="card" style={{ marginBottom: 16 }}>
+        <div style={{ fontWeight: 600, fontSize: 15, marginBottom: 4 }}>🎛️ Student Dashboard Icons</div>
+        <div style={{ fontSize: 13, color: 'var(--text2)', lineHeight: 1.6 }}>
+          Select a student to choose which icons they are allowed to see and pick from on their dashboard.
+        </div>
+      </div>
+
+      <div style={{ position: 'relative', marginBottom: 16 }}>
+        <span style={{ position: 'absolute', left: 12, top: '50%', transform: 'translateY(-50%)', fontSize: 14, color: 'var(--text3)', pointerEvents: 'none' }}>🔍</span>
+        <input value={search} onChange={e => setSearch(e.target.value)} placeholder="Search by name or email…" style={{ paddingLeft: 36, width: '100%', boxSizing: 'border-box' }} />
+        {search && <button onClick={() => setSearch('')} style={{ position: 'absolute', right: 10, top: '50%', transform: 'translateY(-50%)', border: 'none', background: 'none', cursor: 'pointer', fontSize: 16, color: 'var(--text3)' }}>×</button>}
+      </div>
+
+      {loading
+        ? <div style={{ textAlign: 'center', padding: 32 }}><div className="spinner" style={{ margin: '0 auto' }} /></div>
+        : filtered.length === 0
+          ? <div className="empty-state"><div className="empty-icon">👥</div>{search ? 'No students match your search.' : 'No students yet.'}</div>
+          : filtered.map((s, idx) => (
+            <div key={s.id} className="card" style={{ padding: '12px 18px', marginBottom: 10 }}>
+              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8, flexWrap: 'wrap' }}>
+                <div>
+                  <div style={{ fontWeight: 600 }}>
+                    <span style={{ fontSize: 11, fontFamily: 'var(--mono)', color: 'var(--text3)', marginRight: 6 }}>#{idx + 1}</span>
+                    {sLastName(s)}{sLastName(s) && sFirstName(s) ? ', ' : ''}{sFirstName(s)}
+                  </div>
+                  {sEmail(s) && <div style={{ fontSize: 12, color: 'var(--text3)', fontFamily: 'var(--mono)', marginTop: 2 }}>📧 {sEmail(s)}</div>}
+                </div>
+                <button className="btn btn-sm" onClick={() => setIconStudent(s)}>🎛️ Assign Icons</button>
+              </div>
+            </div>
+          ))
+      }
+
+      {iconStudent && (
+        <StudentIconManager
+          student={iconStudent}
+          onClose={(saved) => {
+            setIconStudent(null)
+            if (saved) toast(`Icons updated for ${sFirstName(iconStudent) || iconStudent.name} ✓`)
+          }}
+        />
+      )}
+    </div>
+  )
+}
+
+// ══════════════════════════════════════════════════════════════
 // STAFF PROFILE
 // ══════════════════════════════════════════════════════════════
 function StaffProfile({ session }) {
@@ -760,8 +844,8 @@ function StaffProfile({ session }) {
       <div style={{ display: 'flex', borderBottom: '1px solid var(--border)', marginBottom: 24, overflowX: 'auto' }}>
         {[
           { key: 'info',      label: '👤 My Profile' },
-          { key: 'students',  label: '👥 Students' },
-          { key: 'staff',     label: '👨‍💼 Staff Members' },
+          { key: 'students',  label: '👥 Lab Users' },
+          { key: 'staff',     label: '👨‍💼 Lab Managers' },
           { key: 'dashboard', label: '🎛️ Dashboard Icons' },
           { key: 'notifs',    label: '🔔 Notifications' },
         ].map(t => (
@@ -774,7 +858,7 @@ function StaffProfile({ session }) {
       {activeTab === 'info'      && <UserProfileForm session={session} toast={toast} />}
       {activeTab === 'students'  && <StudentsPanel toast={toast} />}
       {activeTab === 'staff'     && <StaffListPanel toast={toast} />}
-      {activeTab === 'dashboard' && <DashboardIconsPanel session={session} />}
+      {activeTab === 'dashboard' && <StaffStudentIconManager />}
       {activeTab === 'notifs'    && <NotificationPrefsPanel userId={session?.userId} role="user" />}
     </div>
   )
@@ -945,7 +1029,13 @@ function UserProfileForm({ session, toast }) {
       {activeTab === 'pin' && (
         <div className="card">
           <div style={{ fontWeight: 600, fontSize: 15, marginBottom: 4 }}>Change password</div>
-          <div style={{ fontSize: 13, color: 'var(--text3)', marginBottom: 20 }}>Minimum 6 characters.</div>
+          <div style={{ fontSize: 13, color: 'var(--text3)', marginBottom: 16 }}>Minimum 6 characters.</div>
+          {user?.password && (
+            <div style={{ display: 'flex', alignItems: 'center', gap: 10, background: 'var(--surface2)', borderRadius: 8, padding: '10px 14px', marginBottom: 16 }}>
+              <span style={{ fontSize: 13, color: 'var(--text3)' }}>Your current password:</span>
+              <span style={{ fontFamily: 'var(--mono)', fontWeight: 600, fontSize: 14, color: 'var(--text)' }}>{user.password}</span>
+            </div>
+          )}
           <div className="field"><label>Current password</label><input type="password" value={pinForm.current} onChange={e => { setPinForm(f => ({ ...f, current: e.target.value })); setPinError('') }} /></div>
           <div className="grid-2">
             <div className="field"><label>New password</label><input type="password" value={pinForm.newPin} onChange={e => { setPinForm(f => ({ ...f, newPin: e.target.value })); setPinError('') }} /></div>
@@ -1004,7 +1094,7 @@ export default function Profile() {
 function AccessControl({ toast }) {
   const ALL_SCREENS = [
     { key: 'home',        label: 'Supply Inventory',    icon: '📦' },
-    { key: 'projects',    label: 'Project Inventory',   icon: '🧪' },
+    { key: 'projects',    label: 'Project & Material',   icon: '🧪' },
     { key: 'training',    label: 'Training Records',    icon: '🎓' },
     { key: 'equipment',   label: 'Equipment Inventory', icon: '🔧' },
     { key: 'equipmenthub',label: 'Equipment Hub',       icon: '📚' },
@@ -1040,10 +1130,10 @@ function AccessControl({ toast }) {
   if (loading) return <div style={{ textAlign: 'center', padding: 32 }}><div className="spinner" style={{ margin: '0 auto' }} /></div>
   return (
     <div className="card">
-      <div style={{ fontWeight: 600, fontSize: 15, marginBottom: 4 }}>🗂️ Module Access per Staff Member</div>
-      <div style={{ fontSize: 13, color: 'var(--text2)', marginBottom: 16 }}>Control which modules each staff member can see on their dashboard.</div>
+      <div style={{ fontWeight: 600, fontSize: 15, marginBottom: 4 }}>🗂️ Module Access per Lab Manager</div>
+      <div style={{ fontSize: 13, color: 'var(--text2)', marginBottom: 16 }}>Control which modules each lab manager can see on their dashboard.</div>
       <div className="field" style={{ marginBottom: 16 }}>
-        <label>Select staff member</label>
+        <label>Select lab manager</label>
         <select value={selected?.id || ''} onChange={e => setSelected(users.find(u => u.id === e.target.value) || null)}>
           <option value="">— Select —</option>
           {users.map(u => <option key={u.id} value={u.id}>{u.name} (Staff)</option>)}
@@ -1070,7 +1160,7 @@ function AccessControl({ toast }) {
 function IconImageManager({ toast }) {
   const ALL_MODULES = [
     { key: 'supply',      label: 'Supply Inventory',   icon: '📦', bg: '#e8f2ee' },
-    { key: 'projects',    label: 'Project Inventory',  icon: '🧪', bg: '#f3eeff' },
+    { key: 'projects',    label: 'Project & Material',  icon: '🧪', bg: '#f3eeff' },
     { key: 'training',    label: 'Training Records',   icon: '🎓', bg: '#e0f2fe' },
     { key: 'equipment',   label: 'Equipment Inventory',icon: '🔧', bg: '#fef3c7' },
     { key: 'equipmenthub',label: 'Equipment',          icon: '📚', bg: '#e8f2ee' },

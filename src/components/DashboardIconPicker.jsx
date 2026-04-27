@@ -4,7 +4,7 @@ import { sb } from '../lib/supabase'
 // All 11 icons available to BOTH solo and team
 export const ALL_MODULES_META = [
   { key: 'supply',       screen: 'home',         label: 'Supply Inventory',    sub: 'Weekly inspection & export',      icon: '📦', bg: '#e8f2ee', color: '#2a6049', roles: ['team', 'solo'] },
-  { key: 'projects',     screen: 'projects',     label: 'Project Inventory',   sub: 'Materials, storage & database',   icon: '🧪', bg: '#f3eeff', color: '#7c4dbd', roles: ['team', 'solo'] },
+  { key: 'projects',     screen: 'projects',     label: 'Project & Material',  sub: 'Inventory, results & workspace',  icon: '🧪', bg: '#f3eeff', color: '#7c4dbd', roles: ['team', 'solo'] },
   { key: 'training',     screen: 'training',     label: 'Training Records',    sub: 'Certs, equipment & alarm',        icon: '🎓', bg: '#e0f2fe', color: '#0369a1', roles: ['team', 'solo'] },
   { key: 'equipment',    screen: 'equipment',    label: 'Equipment Inventory', sub: 'Lab equipment tracking',          icon: '🔧', bg: '#fef3c7', color: '#92400e', roles: ['team', 'solo'] },
   { key: 'equipmenthub', screen: 'equipmenthub', label: 'Equipment Info',      sub: 'SOPs & standards',                icon: '📚', bg: '#e8f2ee', color: '#1e4d39', roles: ['team', 'solo'] },
