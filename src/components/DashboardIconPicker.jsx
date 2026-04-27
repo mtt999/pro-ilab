@@ -1,10 +1,11 @@
 import { useState, useEffect } from 'react'
 import { sb } from '../lib/supabase'
+import { useAppStore } from '../store/useAppStore'
 
 // All 11 icons available to BOTH solo and team
 export const ALL_MODULES_META = [
   { key: 'supply',       screen: 'home',         label: 'Supply Inventory',    sub: 'Weekly inspection & export',      icon: '📦', bg: '#e8f2ee', color: '#2a6049', roles: ['team', 'solo'] },
-  { key: 'projects',     screen: 'projects',     label: 'Project Inventory',   sub: 'Materials, storage & database',   icon: '🧪', bg: '#f3eeff', color: '#7c4dbd', roles: ['team', 'solo'] },
+  { key: 'projects',     screen: 'projects',     label: 'Project & Material',  sub: 'Inventory, results & workspace',  icon: '🧪', bg: '#f3eeff', color: '#7c4dbd', roles: ['team', 'solo'] },
   { key: 'training',     screen: 'training',     label: 'Training Records',    sub: 'Certs, equipment & alarm',        icon: '🎓', bg: '#e0f2fe', color: '#0369a1', roles: ['team', 'solo'] },
   { key: 'equipment',    screen: 'equipment',    label: 'Equipment Inventory', sub: 'Lab equipment tracking',          icon: '🔧', bg: '#fef3c7', color: '#92400e', roles: ['team', 'solo'] },
   { key: 'equipmenthub', screen: 'equipmenthub', label: 'Equipment Info',      sub: 'SOPs & standards',                icon: '📚', bg: '#e8f2ee', color: '#1e4d39', roles: ['team', 'solo'] },
@@ -50,11 +51,10 @@ function ModuleToggleCard({ module, selected, onToggle, pinned }) {
 }
 
 export default function DashboardIconPicker({ session, loginMode, onDone }) {
-  // All 11 icons available for both solo and team
+  const { setActiveModules } = useAppStore()
   const available = ALL_MODULES_META
 
   const [selected, setSelected] = useState(null)
-  // For students: the pool staff has allowed them to pick from
   const [allowedPool, setAllowedPool] = useState(null)
   const [saving, setSaving] = useState(false)
 
@@ -123,6 +123,9 @@ export default function DashboardIconPicker({ session, loginMode, onDone }) {
         localStorage.setItem('ilab_admin_dashboard_set', 'true')
       }
     } catch (e) { console.error('Failed to save dashboard prefs:', e) }
+    // Always update global store immediately so dashboard reflects the change
+    // without needing a page reload or re-navigation
+    setActiveModules(modules)
     setSaving(false)
     onDone(modules)
   }

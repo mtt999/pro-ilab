@@ -288,7 +288,7 @@ function DashboardView({ modules, onNavigate, mileageUrl, labSafetyUrl, isAdmin,
 }
 
 export default function Dashboard() {
-  const { session, setScreen } = useAppStore()
+  const { session, setScreen, activeModules, setActiveModules } = useAppStore()
   const [view, setView] = useState(() => localStorage.getItem('labstock_view') || 'grid')
   const [mileageUrl, setMileageUrl] = useState('https://bw4qh7p8sn.us-east-1.awsapprunner.com/')
   const [labSafetyUrl, setLabSafetyUrl] = useState('https://canvas.illinois.edu/')
@@ -297,7 +297,6 @@ export default function Dashboard() {
   const [savingUrl, setSavingUrl] = useState(false)
   const [userAccess, setUserAccess] = useState(null)
   const [moduleImages, setModuleImages] = useState({})
-  const [activeModules, setActiveModules] = useState(null)
   const [showPicker, setShowPicker] = useState(false)
 
   const isAdmin   = session?.role === 'admin'
@@ -409,7 +408,7 @@ export default function Dashboard() {
 
       {showPicker && (
         <DashboardIconPicker session={session} loginMode={loginMode}
-          onDone={(savedModules) => { if (savedModules) setActiveModules(savedModules); setShowPicker(false) }}
+          onDone={() => setShowPicker(false)}
         />
       )}
 

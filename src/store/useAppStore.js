@@ -5,7 +5,11 @@ export const useAppStore = create((set, get) => ({
   // ── Auth ──
   session: null,
   setSession: (s) => set({ session: s }),
-  clearSession: () => set({ session: null, sharedWorkspaces: [], viewingWorkspaceOwnerId: null }),
+  clearSession: () => set({ session: null, sharedWorkspaces: [], viewingWorkspaceOwnerId: null, activeModules: null }),
+
+  // ── Active dashboard modules (icon picker) ──
+  activeModules: null,
+  setActiveModules: (modules) => set({ activeModules: modules }),
 
   // ── Login mode: 'team' | 'solo' | null ──
   loginMode: null,
