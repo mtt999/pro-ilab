@@ -22,7 +22,7 @@ function getModules(role, loginMode, activeModules) {
 function getAllModulesForStudent() {
   return [
     { key: 'supply',       screen: 'home',          label: 'Supply Inventory',          sub: 'Weekly inspection & export',       icon: '📦', bg: '#e8f2ee', color: '#2a6049' },
-    { key: 'projects',     screen: 'projects',      label: 'Project Inventory',         sub: 'Materials, storage & database',    icon: '🧪', bg: '#f3eeff', color: '#7c4dbd' },
+    { key: 'projects',     screen: 'projects',      label: 'Project & Material',        sub: 'Inventory, results & workspace',   icon: '🧪', bg: '#f3eeff', color: '#7c4dbd' },
     { key: 'training',     screen: 'training',      label: 'Training Records',          sub: 'Certs, equipment & alarm',         icon: '🎓', bg: '#e0f2fe', color: '#0369a1' },
     { key: 'equipment',    screen: 'equipment',     label: 'Equipment Inventory',       sub: 'Lab equipment tracking',           icon: '🔧', bg: '#fef3c7', color: '#92400e', locked: true },
     { key: 'equipmenthub', screen: 'equipmenthub',  label: 'Equipment',                 sub: 'Info, SOP & standards',            icon: '📚', bg: '#e8f2ee', color: '#1e4d39' },
@@ -37,17 +37,27 @@ function getAllModulesForStudent() {
 }
 
 function ExternalLinkModal({ url, onConfirm, onCancel }) {
+  const hasUrl = url && url.trim() && url.startsWith('http')
   return (
     <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.4)', zIndex: 300, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 20 }}>
       <div style={{ background: 'var(--surface)', borderRadius: 'var(--radius-lg)', padding: 28, maxWidth: 380, width: '100%', border: '1px solid var(--border)' }}>
-        <div style={{ fontSize: 36, textAlign: 'center', marginBottom: 12 }}>🔗</div>
-        <div style={{ fontWeight: 700, fontSize: 18, marginBottom: 8, textAlign: 'center' }}>Leaving InteleLab</div>
-        <div style={{ fontSize: 14, color: 'var(--text2)', lineHeight: 1.7, marginBottom: 8, textAlign: 'center' }}>You are being redirected to an external website:</div>
-        <div style={{ background: 'var(--surface2)', borderRadius: 8, padding: '8px 14px', marginBottom: 20, fontSize: 13, color: 'var(--text3)', fontFamily: 'var(--mono)', wordBreak: 'break-all', textAlign: 'center' }}>{url}</div>
-        <div style={{ display: 'flex', gap: 10 }}>
-          <button className="btn" style={{ flex: 1 }} onClick={onCancel}>Cancel</button>
-          <button className="btn btn-primary" style={{ flex: 1 }} onClick={onConfirm}>Continue →</button>
-        </div>
+        <div style={{ fontSize: 36, textAlign: 'center', marginBottom: 12 }}>{hasUrl ? '🔗' : '⚠️'}</div>
+        <div style={{ fontWeight: 700, fontSize: 18, marginBottom: 8, textAlign: 'center' }}>{hasUrl ? 'Leaving InteleLab' : 'Link not configured'}</div>
+        {hasUrl ? (
+          <>
+            <div style={{ fontSize: 14, color: 'var(--text2)', lineHeight: 1.7, marginBottom: 8, textAlign: 'center' }}>You are being redirected to an external website:</div>
+            <div style={{ background: 'var(--surface2)', borderRadius: 8, padding: '8px 14px', marginBottom: 20, fontSize: 13, color: 'var(--text3)', fontFamily: 'var(--mono)', wordBreak: 'break-all', textAlign: 'center' }}>{url}</div>
+            <div style={{ display: 'flex', gap: 10 }}>
+              <button className="btn" style={{ flex: 1 }} onClick={onCancel}>Cancel</button>
+              <button className="btn btn-primary" style={{ flex: 1 }} onClick={onConfirm}>Continue →</button>
+            </div>
+          </>
+        ) : (
+          <>
+            <div style={{ fontSize: 14, color: 'var(--text2)', lineHeight: 1.7, marginBottom: 20, textAlign: 'center' }}>The admin has not set up a URL for this link yet. Please contact your lab manager.</div>
+            <button className="btn" style={{ width: '100%' }} onClick={onCancel}>Close</button>
+          </>
+        )}
       </div>
     </div>
   )
@@ -91,10 +101,14 @@ function CardGridView({ modules, onNavigate, mileageUrl, labSafetyUrl, isAdmin, 
 
   if (isStudent) {
     const allMods = getAllModulesForStudent()
+    // Respect activeModules: hide unchecked non-locked cards
+    const visibleMods = activeModules?.length
+      ? allMods.filter(m => m.locked || activeModules.includes(m.key))
+      : allMods
     return (
       <>
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(180px, 1fr))', gap: 14 }}>
-          {allMods.map(m => {
+          {visibleMods.map(m => {
             if (m.locked) return <LockedCard key={m.key} m={m} />
             return <ModuleCard key={m.key} m={m} imgUrl={moduleImages[m.key]} onClick={() => m.external ? setConfirmExternal({ url: m.key === 'mileage' ? mileageUrl : labSafetyUrl }) : onNavigate(m.screen)} />
           })}
@@ -120,7 +134,7 @@ function CardGridView({ modules, onNavigate, mileageUrl, labSafetyUrl, isAdmin, 
   )
 }
 
-function StudentDashboardView({ session, onNavigate, mileageUrl, moduleImages }) {
+function StudentDashboardView({ session, onNavigate, mileageUrl, moduleImages, activeModules }) {
   const [data, setData] = useState({ myProjects: 0, trainingsComplete: 0, trainingsTotal: 4, upcomingBookings: [], pendingCert: false })
   const [loading, setLoading] = useState(true)
   const [confirmExternal, setConfirmExternal] = useState(null)
@@ -149,14 +163,17 @@ function StudentDashboardView({ session, onNavigate, mileageUrl, moduleImages })
   }
   const trainingPct = Math.round((data.trainingsComplete/data.trainingsTotal)*100)
   const trainingColor = trainingPct===100?'#2a6049':trainingPct>=50?'#0369a1':'#c84b2f'
-  const quickLinks = [
-    { key:'projects', icon:'🧪', label:'My Projects',        sub:'View assigned projects',  screen:'projects',     color:'#7c4dbd' },
-    { key:'training', icon:'🎓', label:'Training Records',    sub:'Check your certs',        screen:'training',     color:'#0369a1' },
-    { key:'booking',  icon:'📅', label:'Book Equipment',      sub:'Reserve lab equipment',   screen:'booking',      color:'#0369a1' },
-    { key:'equipmenthub',icon:'📚',label:'Equipment Info',     sub:'SOPs & standards',        screen:'equipmenthub', color:'#1e4d39' },
-    { key:'remessages',icon:'💬',label:'Contact Lab Manager', sub:'Ask REs a question',      screen:'remessages',   color:'#2a6049' },
-    { key:'mileage',  icon:'🚗', label:'Mileage Form',        sub:'Submit reimbursement',    screen:null,           color:'#c84b2f', external:true },
+  const allQuickLinks = [
+    { key:'projects',    icon:'🧪', label:'Project & Material',   sub:'Inventory, results & workspace', screen:'projects',    color:'#7c4dbd' },
+    { key:'training',    icon:'🎓', label:'Training Records',     sub:'Check your certs',               screen:'training',    color:'#0369a1' },
+    { key:'booking',     icon:'📅', label:'Book Equipment',       sub:'Reserve lab equipment',          screen:'booking',     color:'#0369a1' },
+    { key:'equipmenthub',icon:'📚', label:'Equipment Info',       sub:'SOPs & standards',               screen:'equipmenthub',color:'#1e4d39' },
+    { key:'remessages',  icon:'💬', label:'Contact Lab Manager',  sub:'Ask REs a question',             screen:'remessages',  color:'#2a6049' },
+    { key:'mileage',     icon:'🚗', label:'Mileage Form',         sub:'Submit reimbursement',           screen:null,          color:'#c84b2f', external:true },
   ]
+  const quickLinks = activeModules?.length
+    ? allQuickLinks.filter(m => activeModules.includes(m.key))
+    : allQuickLinks
   return (
     <>
       <div style={{ display:'grid', gridTemplateColumns:'1fr 260px', gap:20, alignItems:'start' }}>
@@ -385,7 +402,7 @@ export default function Dashboard() {
         </div>
       </div>
 
-      {isStudent && view==='dashboard' && <StudentDashboardView session={session} onNavigate={s=>setScreen(s)} mileageUrl={mileageUrl} moduleImages={moduleImages} />}
+      {isStudent && view==='dashboard' && <StudentDashboardView session={session} onNavigate={s=>setScreen(s)} mileageUrl={mileageUrl} moduleImages={moduleImages} activeModules={activeModules} />}
       {isStudent && view==='grid'      && <CardGridView modules={modules} onNavigate={s=>setScreen(s)} mileageUrl={mileageUrl} labSafetyUrl={labSafetyUrl} isAdmin={false} onEditUrl={()=>{}} moduleImages={moduleImages} isStudent={true} activeModules={activeModules} />}
       {!isStudent && view==='grid'     && <CardGridView modules={modules} onNavigate={s=>setScreen(s)} mileageUrl={mileageUrl} labSafetyUrl={labSafetyUrl} isAdmin={isAdmin} onEditUrl={(type)=>{setEditingUrl(type);setUrlInput(type==='mileage'?mileageUrl:labSafetyUrl)}} moduleImages={moduleImages} isStudent={false} activeModules={activeModules} />}
       {!isStudent && view==='dashboard' && <DashboardView modules={modules} onNavigate={s=>setScreen(s)} mileageUrl={mileageUrl} labSafetyUrl={labSafetyUrl} isAdmin={isAdmin} onEditUrl={(type)=>{setEditingUrl(type);setUrlInput(type==='mileage'?mileageUrl:labSafetyUrl)}} moduleImages={moduleImages} />}
