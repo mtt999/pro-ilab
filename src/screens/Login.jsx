@@ -175,7 +175,7 @@ function SignUpForm({ onSuccess, onCancel }) {
 
 // ── Main Login ─────────────────────────────────────────────────────────────
 export default function Login() {
-  const { setSession, setLoginMode } = useAppStore()
+  const { setSession, setLoginMode, setSharedWorkspaces } = useAppStore()
   const [mode, setMode]             = useState(null)
   const [identifier, setIdentifier] = useState('')
   const [password, setPassword]     = useState('')
@@ -239,6 +239,18 @@ export default function Login() {
         email: soloUser.email, photoUrl: soloUser.photo_url, avatar: soloUser.avatar,
         activeModules: soloUser.active_modules || [], loginMode: 'solo',
       })
+      // Load workspaces this user has been invited into
+      const { data: memberships } = await sb
+        .from('solo_workspace_members')
+        .select('owner_id')
+        .eq('member_id', soloUser.id)
+      if (memberships?.length) {
+        const ownerIds = memberships.map(m => m.owner_id)
+        const { data: owners } = await sb.from('solo_users').select('id, name').in('id', ownerIds)
+        setSharedWorkspaces((owners || []).map(o => ({ ownerId: o.id, ownerName: o.name })))
+      } else {
+        setSharedWorkspaces([])
+      }
       setLoading(false)
     }
   }

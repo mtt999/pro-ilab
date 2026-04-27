@@ -223,7 +223,7 @@ function ProjectInfo({ project, users, onSaved }) {
   )
 }
 
-function NewProjectModal({ users, onClose, onCreated }) {
+function NewProjectModal({ users, onClose, onCreated, soloOwnerId }) {
   const { toast } = useAppStore()
   const [form, setForm] = useState({ name: '', project_id: '', cfop: '', status: 'active', pi_user_id: '', student_ids: [], sampling_date: '', storage_date: '', notes: '' })
 
@@ -234,7 +234,7 @@ function NewProjectModal({ users, onClose, onCreated }) {
   async function create() {
     if (!form.name.trim()) { toast('Project name is required.'); return }
     if (!form.project_id.trim()) { toast('Project title is required.'); return }
-    const payload = { name: form.name.trim(), project_id: form.project_id.trim(), cfop: form.cfop.trim() || null, status: form.status, pi_user_id: form.pi_user_id || null, student_ids: form.student_ids, sampling_date: form.sampling_date || null, storage_date: form.storage_date || null, notes: form.notes.trim() || null }
+    const payload = { name: form.name.trim(), project_id: form.project_id.trim(), cfop: form.cfop.trim() || null, status: form.status, pi_user_id: form.pi_user_id || null, student_ids: form.student_ids, sampling_date: form.sampling_date || null, storage_date: form.storage_date || null, notes: form.notes.trim() || null, solo_owner_id: soloOwnerId || null }
     const { data, error } = await sb.from('projects').insert(payload).select().single()
     if (error) { toast('Error creating project.'); return }
     toast('Project created!'); onCreated(data.id); onClose()
@@ -288,7 +288,9 @@ function NewProjectModal({ users, onClose, onCreated }) {
 }
 
 export default function Projects() {
-  const { toast } = useAppStore()
+  const { toast, session, sharedWorkspaces, viewingWorkspaceOwnerId, setViewingWorkspaceOwnerId } = useAppStore()
+  const isSolo = session?.loginMode === 'solo'
+
   const [allProjects, setAllProjects] = useState([])
   const [projects, setProjects] = useState([])
   const [users, setUsers] = useState([])
@@ -299,13 +301,22 @@ export default function Projects() {
   const [activeProject, setActiveProject] = useState(null)
   const [subTab, setSubTab] = useState('info')
 
-  useEffect(() => { loadProjects() }, [filter])
+  useEffect(() => { loadProjects() }, [filter, viewingWorkspaceOwnerId])
   useEffect(() => { loadUsers() }, [])
   useEffect(() => { if (activeProjectId) loadActiveProject() }, [activeProjectId])
 
   async function loadProjects() {
     setLoading(true)
-    let q = sb.from('projects').select('id, name, project_id, status, cfop, pi_user_id, student_ids, sampling_date, notes').order('created_at', { ascending: false })
+    let q = sb.from('projects').select('id, name, project_id, status, cfop, pi_user_id, student_ids, sampling_date, notes, solo_owner_id').order('created_at', { ascending: false })
+
+    if (isSolo) {
+      if (viewingWorkspaceOwnerId) {
+        q = q.eq('solo_owner_id', viewingWorkspaceOwnerId)
+      } else {
+        q = q.or(`solo_owner_id.eq.${session.userId},solo_owner_id.is.null`)
+      }
+    }
+
     if (filter !== 'all') q = q.eq('status', filter)
     const { data } = await q
     setAllProjects(data || [])
@@ -338,13 +349,35 @@ export default function Projects() {
     { key: 'database', label: '4 · Database' },
   ]
 
+  const viewingShared = isSolo && !!viewingWorkspaceOwnerId
+  const viewingOwnerName = sharedWorkspaces.find(ws => ws.ownerId === viewingWorkspaceOwnerId)?.ownerName
+
   return (
     <div>
       <div className="section-header" style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
         <div className="section-title">Projects</div>
         <HelpPanel screen="projects" />
-        <button className="btn btn-sm btn-purple" onClick={() => setShowNewModal(true)}>+ New project</button>
+        {!viewingShared && <button className="btn btn-sm btn-purple" onClick={() => setShowNewModal(true)}>+ New project</button>}
       </div>
+
+      {/* Workspace switcher — only for solo users with shared workspaces */}
+      {isSolo && sharedWorkspaces.length > 0 && (
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 16, padding: '10px 14px', background: '#EEEDFE', borderRadius: 10, border: '1px solid #CECBF6', flexWrap: 'wrap' }}>
+          <span style={{ fontSize: 12, fontWeight: 600, color: '#534AB7', marginRight: 4, flexShrink: 0 }}>Workspace:</span>
+          <button
+            onClick={() => { setViewingWorkspaceOwnerId(null); setActiveProjectId(null); setActiveProject(null) }}
+            style={{ padding: '4px 14px', borderRadius: 99, border: 'none', cursor: 'pointer', fontWeight: 600, fontSize: 12, background: !viewingWorkspaceOwnerId ? '#534AB7' : 'rgba(83,74,183,0.12)', color: !viewingWorkspaceOwnerId ? '#fff' : '#534AB7', transition: 'all 0.15s' }}>
+            My Workspace
+          </button>
+          {sharedWorkspaces.map(ws => (
+            <button key={ws.ownerId}
+              onClick={() => { setViewingWorkspaceOwnerId(ws.ownerId); setActiveProjectId(null); setActiveProject(null) }}
+              style={{ padding: '4px 14px', borderRadius: 99, border: 'none', cursor: 'pointer', fontWeight: 600, fontSize: 12, background: viewingWorkspaceOwnerId === ws.ownerId ? '#534AB7' : 'rgba(83,74,183,0.12)', color: viewingWorkspaceOwnerId === ws.ownerId ? '#fff' : '#534AB7', transition: 'all 0.15s' }}>
+              {ws.ownerName}'s Workspace
+            </button>
+          ))}
+        </div>
+      )}
 
       <div style={{ display: 'flex', gap: 8, marginBottom: 12, flexWrap: 'wrap' }}>
         {['all','active','on hold','completed'].map(f => (
@@ -395,8 +428,13 @@ export default function Projects() {
                     <div style={{ fontSize: 12, fontFamily: 'var(--mono)', color: 'var(--text3)', marginTop: 2 }}>
                       {[activeProject.project_id && `Title: ${activeProject.project_id}`, activeProject.cfop && `CFOP: ${activeProject.cfop}`].filter(Boolean).join(' · ')}
                     </div>
+                    {viewingShared && (
+                      <div style={{ marginTop: 4, display: 'inline-block', fontSize: 11, fontWeight: 600, background: '#EEEDFE', color: '#534AB7', borderRadius: 99, padding: '2px 8px' }}>
+                        {viewingOwnerName}'s workspace
+                      </div>
+                    )}
                   </div>
-                  <button className="btn btn-sm btn-danger" onClick={() => deleteProject(activeProject.id)}>Delete</button>
+                  {!viewingShared && <button className="btn btn-sm btn-danger" onClick={() => deleteProject(activeProject.id)}>Delete</button>}
                 </div>
               </div>
               <div style={{ display: 'flex', borderBottom: '1px solid var(--border)', marginBottom: 0, background: 'var(--surface)', overflowX: 'auto' }}>
@@ -418,7 +456,14 @@ export default function Projects() {
         </div>
       </div>
 
-      {showNewModal && <NewProjectModal users={users} onClose={() => setShowNewModal(false)} onCreated={(id) => { setActiveProjectId(id); loadProjects() }} />}
+      {showNewModal && (
+        <NewProjectModal
+          users={users}
+          onClose={() => setShowNewModal(false)}
+          onCreated={(id) => { setActiveProjectId(id); loadProjects() }}
+          soloOwnerId={isSolo ? session?.userId : null}
+        />
+      )}
     </div>
   )
 }
