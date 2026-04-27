@@ -32,3 +32,25 @@ CREATE TABLE IF NOT EXISTS solo_workspace_members (
 
 CREATE INDEX IF NOT EXISTS idx_swm_owner  ON solo_workspace_members(owner_id);
 CREATE INDEX IF NOT EXISTS idx_swm_member ON solo_workspace_members(member_id);
+
+-- 4. Project test results (linked to a project)
+CREATE TABLE IF NOT EXISTS project_results (
+  id           uuid        DEFAULT gen_random_uuid() PRIMARY KEY,
+  project_id   uuid        NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
+  submitted_by text,
+  result_type  text,
+  description  text        NOT NULL,
+  result_date  date,
+  created_at   timestamptz NOT NULL DEFAULT now()
+);
+CREATE INDEX IF NOT EXISTS idx_pr_project ON project_results(project_id);
+
+-- 5. Project links (linked to a project)
+CREATE TABLE IF NOT EXISTS project_links (
+  id         uuid        DEFAULT gen_random_uuid() PRIMARY KEY,
+  project_id uuid        NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
+  title      text        NOT NULL,
+  url        text        NOT NULL,
+  created_at timestamptz NOT NULL DEFAULT now()
+);
+CREATE INDEX IF NOT EXISTS idx_pl_project ON project_links(project_id);

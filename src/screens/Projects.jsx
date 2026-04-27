@@ -307,9 +307,12 @@ export default function Projects() {
 
   async function loadProjects() {
     setLoading(true)
-    let q = sb.from('projects').select('id, name, project_id, status, cfop, pi_user_id, student_ids, sampling_date, notes, solo_owner_id').order('created_at', { ascending: false })
 
-    if (isSolo) {
+    const baseSelect = 'id, name, project_id, status, cfop, pi_user_id, student_ids, sampling_date, notes'
+
+    let q = sb.from('projects').select(baseSelect).order('created_at', { ascending: false })
+
+    if (isSolo && session?.userId) {
       if (viewingWorkspaceOwnerId) {
         q = q.eq('solo_owner_id', viewingWorkspaceOwnerId)
       } else {
@@ -318,7 +321,16 @@ export default function Projects() {
     }
 
     if (filter !== 'all') q = q.eq('status', filter)
-    const { data } = await q
+    let { data, error } = await q
+
+    // solo_owner_id column doesn't exist yet (SQL migration not run) — fall back to all projects
+    if (error && isSolo) {
+      let fallback = sb.from('projects').select(baseSelect).order('created_at', { ascending: false })
+      if (filter !== 'all') fallback = fallback.eq('status', filter)
+      const { data: fd } = await fallback
+      data = fd
+    }
+
     setAllProjects(data || [])
     setProjects(data || [])
     setLoading(false)
