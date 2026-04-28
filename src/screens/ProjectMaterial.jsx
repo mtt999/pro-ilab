@@ -804,56 +804,166 @@ function DataAnalysis() {
                 ))}
               </div>
 
-              {/* Trend chart */}
-              {numericVals.length > 1 && (
-                <div style={{ background: 'var(--surface)', border: '1px solid var(--border)', borderRadius: 'var(--radius-lg)', padding: '16px 20px' }}>
-                  <div style={{ fontWeight: 600, fontSize: 13, marginBottom: 12 }}>Result Trend</div>
-                  <div style={{ display: 'flex', alignItems: 'flex-end', gap: 6, height: 80 }}>
-                    {filteredResults.filter(r => r.result_type === 'number' || r.result_type === 'percentage').map(r => {
-                      const val = parseFloat(r.result_value)
-                      const h = Math.max(4, Math.round((val / chartMax) * 72))
-                      return (
-                        <div key={r.id} title={`${r.date} — ${r.sample_name}: ${r.result_value}`}
-                          style={{ flex: 1, maxWidth: 40, height: h, borderRadius: '4px 4px 0 0', background: isOutlier(r.result_value) ? '#c84b2f' : 'var(--accent3)', opacity: 0.85, cursor: 'default' }} />
-                      )
-                    })}
-                  </div>
-                  <div style={{ fontSize: 11, color: 'var(--text3)', marginTop: 6 }}>Red = outliers (&gt;2× std dev from avg)</div>
-                </div>
-              )}
+              {/* Chart: results per sample name */}
+              {(() => {
+                const grouped = {}
+                filteredResults.forEach(r => {
+                  const key = r.test_name || r.sample_name || 'Unnamed'
+                  if (!grouped[key]) grouped[key] = []
+                  grouped[key].push(r)
+                })
+                const groups = Object.entries(grouped)
+                if (!groups.length) return null
+                const allNumeric  = groups.every(([, rs]) => rs.every(r => r.result_type === 'number' || r.result_type === 'percentage'))
+                const allPassFail = groups.every(([, rs]) => rs.every(r => r.result_type === 'pass_fail'))
+                const mixed = !allNumeric && !allPassFail
 
-              {/* Results table */}
-              <div style={{ background: 'var(--surface)', border: '1px solid var(--border)', borderRadius: 'var(--radius-lg)', overflow: 'hidden' }}>
-                <div style={{ padding: '12px 16px', borderBottom: '1px solid var(--border)', fontWeight: 600, fontSize: 13 }}>All Results</div>
-                <div style={{ overflowX: 'auto' }}>
-                  <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>
-                    <thead>
-                      <tr style={{ background: 'var(--surface2)' }}>
-                        {['Date', 'Sample', 'Type', 'Result', 'By', 'Notes'].map(h => (
-                          <th key={h} style={{ padding: '8px 12px', textAlign: 'left', fontWeight: 600, fontSize: 11, color: 'var(--text3)', textTransform: 'uppercase', letterSpacing: '0.05em', whiteSpace: 'nowrap' }}>{h}</th>
-                        ))}
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {filteredResults.map((r, i) => {
-                        const outlier = (r.result_type === 'number' || r.result_type === 'percentage') && isOutlier(r.result_value)
-                        return (
-                          <tr key={r.id} style={{ borderTop: '1px solid var(--border)', background: outlier ? '#fff5f5' : i % 2 === 0 ? 'var(--surface)' : 'var(--surface2)' }}>
-                            <td style={{ padding: '8px 12px', whiteSpace: 'nowrap' }}>{r.date}</td>
-                            <td style={{ padding: '8px 12px' }}>{r.sample_name}</td>
-                            <td style={{ padding: '8px 12px', color: 'var(--text3)', fontSize: 11, textTransform: 'capitalize' }}>{r.result_type?.replace('_', '/')}</td>
-                            <td style={{ padding: '8px 12px', fontWeight: 600, color: outlier ? '#c84b2f' : r.result_value === 'Pass' ? '#2a6049' : r.result_value === 'Fail' ? '#c84b2f' : 'var(--text)' }}>
-                              {r.result_type === 'percentage' ? r.result_value + '%' : r.result_value}{outlier ? ' ⚠️' : ''}
-                            </td>
-                            <td style={{ padding: '8px 12px', color: 'var(--text3)' }}>{r.created_by || '—'}</td>
-                            <td style={{ padding: '8px 12px', color: 'var(--text2)', maxWidth: 200, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{r.explanation || '—'}</td>
-                          </tr>
-                        )
-                      })}
-                    </tbody>
-                  </table>
-                </div>
-              </div>
+                const barData = groups.map(([label, rs]) => {
+                  const nums = rs.map(r => parseFloat(r.result_value)).filter(v => !isNaN(v))
+                  const avg  = nums.length ? nums.reduce((a, b) => a + b, 0) / nums.length : null
+                  const pf   = rs.filter(r => r.result_type === 'pass_fail')
+                  const passCount = pf.filter(r => r.result_value === 'Pass').length
+                  const passRate  = pf.length ? Math.round((passCount / pf.length) * 100) : null
+                  return { label, count: rs.length, avg, passRate, passCount, failCount: pf.length - passCount, nums }
+                })
+                const maxAvg = Math.max(...barData.map(b => b.avg ?? 0), 0.001)
+
+                return (
+                  <div style={{ background: 'var(--surface)', border: '1px solid var(--border)', borderRadius: 'var(--radius-lg)', padding: '16px 20px' }}>
+                    <div style={{ fontWeight: 600, fontSize: 13, marginBottom: 16 }}>Results by Sample</div>
+                    <div style={{ overflowX: 'auto' }}>
+                      <div style={{ display: 'flex', alignItems: 'flex-end', gap: 8, minHeight: 120, paddingBottom: 28, position: 'relative' }}>
+                        {/* Y-axis line */}
+                        <div style={{ position: 'absolute', left: 0, top: 0, bottom: 28, width: 1, background: 'var(--border)' }} />
+                        {barData.map((b, idx) => {
+                          const isOk = b.passRate !== null ? b.passRate >= 80 : !isOutlier(b.avg)
+                          const barColor = b.passRate !== null
+                            ? (b.passRate >= 80 ? '#2a6049' : '#c84b2f')
+                            : isOutlier(b.avg) ? '#c84b2f' : 'var(--accent3)'
+
+                          if (b.passRate !== null) {
+                            // stacked pass/fail bar
+                            const totalH = 90
+                            const passH  = Math.round((b.passRate / 100) * totalH)
+                            const failH  = totalH - passH
+                            return (
+                              <div key={idx} style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', flex: '1 1 0', minWidth: 40, maxWidth: 80, gap: 0 }}>
+                                <div style={{ fontSize: 10, color: 'var(--text3)', marginBottom: 2 }}>{b.passRate}%</div>
+                                <div style={{ width: '70%' }}>
+                                  {failH > 0 && <div style={{ height: failH, background: '#c84b2f', borderRadius: failH === 90 ? '4px 4px 0 0' : '0', opacity: 0.85 }} />}
+                                  {passH > 0 && <div style={{ height: passH, background: '#2a6049', borderRadius: failH === 0 ? '4px 4px 0 0' : '0', opacity: 0.85 }} />}
+                                </div>
+                                <div style={{ fontSize: 10, color: 'var(--text3)', marginTop: 4, textAlign: 'center', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', maxWidth: '100%' }} title={b.label}>{b.label}</div>
+                                <div style={{ fontSize: 9, color: 'var(--text3)' }}>n={b.count}</div>
+                              </div>
+                            )
+                          }
+                          if (b.avg !== null) {
+                            const h = Math.max(4, Math.round((b.avg / maxAvg) * 90))
+                            return (
+                              <div key={idx} style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', flex: '1 1 0', minWidth: 40, maxWidth: 80 }}>
+                                <div style={{ fontSize: 10, color: 'var(--text3)', marginBottom: 2 }}>{b.avg.toFixed(1)}</div>
+                                <div style={{ width: '70%', height: h, background: barColor, borderRadius: '4px 4px 0 0', opacity: 0.85 }} />
+                                <div style={{ fontSize: 10, color: 'var(--text3)', marginTop: 4, textAlign: 'center', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', maxWidth: '100%' }} title={b.label}>{b.label}</div>
+                                <div style={{ fontSize: 9, color: 'var(--text3)' }}>n={b.count}</div>
+                              </div>
+                            )
+                          }
+                          // text / mixed
+                          return (
+                            <div key={idx} style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', flex: '1 1 0', minWidth: 40, maxWidth: 80 }}>
+                              <div style={{ fontSize: 11, fontWeight: 700, color: 'var(--accent3)', marginBottom: 2 }}>{b.count}</div>
+                              <div style={{ width: '70%', height: Math.max(4, b.count * 12), background: 'var(--accent3)', borderRadius: '4px 4px 0 0', opacity: 0.5 }} />
+                              <div style={{ fontSize: 10, color: 'var(--text3)', marginTop: 4, textAlign: 'center', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', maxWidth: '100%' }} title={b.label}>{b.label}</div>
+                              <div style={{ fontSize: 9, color: 'var(--text3)' }}>entries</div>
+                            </div>
+                          )
+                        })}
+                      </div>
+                    </div>
+                    {barData.some(b => b.passRate !== null) && (
+                      <div style={{ display: 'flex', gap: 12, fontSize: 11, color: 'var(--text3)', marginTop: 4 }}>
+                        <span><span style={{ display: 'inline-block', width: 10, height: 10, background: '#2a6049', borderRadius: 2, marginRight: 4 }} />Pass</span>
+                        <span><span style={{ display: 'inline-block', width: 10, height: 10, background: '#c84b2f', borderRadius: 2, marginRight: 4 }} />Fail</span>
+                      </div>
+                    )}
+                    {barData.some(b => b.avg !== null) && (
+                      <div style={{ fontSize: 11, color: 'var(--text3)', marginTop: 4 }}>Bar height = average value per sample · Red = outlier (&gt;2× std dev)</div>
+                    )}
+                  </div>
+                )
+              })()}
+
+              {/* Results table + sample info panel */}
+              {(() => {
+                const [selectedRow, setSelectedRow] = useState(null)
+                return (
+                  <div style={{ display: 'grid', gridTemplateColumns: selectedRow ? '1fr 280px' : '1fr', gap: 12, alignItems: 'start' }}>
+                    <div style={{ background: 'var(--surface)', border: '1px solid var(--border)', borderRadius: 'var(--radius-lg)', overflow: 'hidden' }}>
+                      <div style={{ padding: '12px 16px', borderBottom: '1px solid var(--border)', fontWeight: 600, fontSize: 13 }}>All Results <span style={{ fontSize: 11, color: 'var(--text3)', fontWeight: 400 }}>— click a row for details</span></div>
+                      <div style={{ overflowX: 'auto' }}>
+                        <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>
+                          <thead>
+                            <tr style={{ background: 'var(--surface2)' }}>
+                              {['Date', 'Sample', 'Type', 'Result', 'Notes', 'By'].map(h => (
+                                <th key={h} style={{ padding: '8px 12px', textAlign: 'left', fontWeight: 600, fontSize: 11, color: 'var(--text3)', textTransform: 'uppercase', letterSpacing: '0.05em', whiteSpace: 'nowrap' }}>{h}</th>
+                              ))}
+                            </tr>
+                          </thead>
+                          <tbody>
+                            {filteredResults.map((r, i) => {
+                              const outlier = (r.result_type === 'number' || r.result_type === 'percentage') && isOutlier(r.result_value)
+                              const isActive = selectedRow?.id === r.id
+                              return (
+                                <tr key={r.id} onClick={() => setSelectedRow(isActive ? null : r)}
+                                  style={{ borderTop: '1px solid var(--border)', cursor: 'pointer', background: isActive ? 'var(--accent3-light)' : outlier ? '#fff5f5' : i % 2 === 0 ? 'var(--surface)' : 'var(--surface2)' }}>
+                                  <td style={{ padding: '8px 12px', whiteSpace: 'nowrap' }}>{r.date}</td>
+                                  <td style={{ padding: '8px 12px', fontWeight: 500 }}>{r.test_name || r.sample_name}</td>
+                                  <td style={{ padding: '8px 12px', color: 'var(--text3)', fontSize: 11, textTransform: 'capitalize' }}>{r.result_type?.replace('_', '/')}</td>
+                                  <td style={{ padding: '8px 12px', fontWeight: 600, color: outlier ? '#c84b2f' : r.result_value === 'Pass' ? '#2a6049' : r.result_value === 'Fail' ? '#c84b2f' : 'var(--text)' }}>
+                                    {r.result_type === 'percentage' ? r.result_value + '%' : r.result_value}{outlier ? ' ⚠️' : ''}
+                                  </td>
+                                  <td style={{ padding: '8px 12px', color: 'var(--text2)', maxWidth: 160, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{r.explanation || '—'}</td>
+                                  <td style={{ padding: '8px 12px', color: 'var(--text3)' }}>{r.created_by || '—'}</td>
+                                </tr>
+                              )
+                            })}
+                          </tbody>
+                        </table>
+                      </div>
+                    </div>
+
+                    {/* Sample test info panel */}
+                    {selectedRow && (
+                      <div style={{ background: 'var(--surface)', border: '1px solid var(--accent3)', borderRadius: 'var(--radius-lg)', overflow: 'hidden', position: 'sticky', top: 8 }}>
+                        <div style={{ padding: '12px 16px', borderBottom: '1px solid var(--border)', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                          <span style={{ fontWeight: 600, fontSize: 13 }}>🔬 Sample Test Info</span>
+                          <button onClick={() => setSelectedRow(null)} style={{ border: 'none', background: 'none', cursor: 'pointer', fontSize: 14, color: 'var(--text3)' }}>✕</button>
+                        </div>
+                        <div style={{ padding: '14px 16px', display: 'flex', flexDirection: 'column', gap: 10 }}>
+                          {[
+                            { label: 'Test Name',    value: selectedRow.test_name || selectedRow.sample_name },
+                            { label: 'Date',         value: selectedRow.date },
+                            { label: 'Result Type',  value: selectedRow.result_type?.replace('_', ' / ') },
+                            { label: 'Result',       value: selectedRow.result_type === 'percentage' ? selectedRow.result_value + '%' : selectedRow.result_value, bold: true,
+                              color: selectedRow.result_value === 'Pass' ? '#2a6049' : selectedRow.result_value === 'Fail' ? '#c84b2f' : 'var(--text)' },
+                            { label: 'Equipment',    value: selected?.equipment_name },
+                            { label: 'Submitted By', value: selectedRow.created_by },
+                            { label: 'Notes',        value: selectedRow.explanation, multiline: true },
+                          ].map(f => f.value ? (
+                            <div key={f.label} style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
+                              <div style={{ fontSize: 10, fontWeight: 700, color: 'var(--text3)', textTransform: 'uppercase', letterSpacing: '0.06em' }}>{f.label}</div>
+                              <div style={{ fontSize: 13, fontWeight: f.bold ? 700 : 400, color: f.color || 'var(--text)', lineHeight: f.multiline ? 1.5 : 1.3, background: 'var(--surface2)', borderRadius: 6, padding: '6px 10px' }}>
+                                {f.value}
+                              </div>
+                            </div>
+                          ) : null)}
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                )
+              })()}
             </>
           )}
 
