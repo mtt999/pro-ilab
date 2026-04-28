@@ -663,6 +663,136 @@ function ResultsTab({ projects, session }) {
   )
 }
 
+// ── Point Chart ───────────────────────────────────────────────
+const PALETTE = ['#0d47a1','#c84b2f','#2a6049','#7c4dbd','#b45309','#0369a1','#be185d','#065f46']
+function PointChart({ results, isOutlier }) {
+  const numeric  = results.filter(r => ['number','percentage','temperature','ratio'].includes(r.result_type))
+  const passFail = results.filter(r => r.result_type === 'pass_fail')
+  if (!numeric.length && !passFail.length) return null
+
+  const W = 560, H = 180
+  const pad = { t: 20, r: 20, b: 44, l: 48 }
+  const cW = W - pad.l - pad.r
+  const cH = H - pad.t - pad.b
+
+  // collect all entries sorted by date then by sequence
+  const sorted = [...results].sort((a, b) => (a.date || '') < (b.date || '') ? -1 : 1)
+  const names  = [...new Set(sorted.map(r => r.test_name || r.sample_name || 'Result'))]
+  const colorOf = n => PALETTE[names.indexOf(n) % PALETTE.length]
+
+  // separate numeric and pass/fail for dual-axis layout
+  const numSorted = sorted.filter(r => ['number','percentage','temperature','ratio'].includes(r.result_type))
+  const vals = numSorted.map(r => parseFloat(r.result_value)).filter(v => !isNaN(v))
+  const rawMin = vals.length ? Math.min(...vals) : 0
+  const rawMax = vals.length ? Math.max(...vals) : 1
+  const pad5   = (rawMax - rawMin) * 0.1 || 0.5
+  const yMin   = rawMin - pad5
+  const yMax   = rawMax + pad5
+
+  const allSorted = [...sorted]
+  const toX = i => pad.l + (allSorted.length <= 1 ? cW / 2 : (i / (allSorted.length - 1)) * cW)
+  const toY = v => pad.t + ((yMax - v) / (yMax - yMin)) * cH
+
+  // Y-axis ticks (5 ticks)
+  const ticks = 4
+  const tickVals = Array.from({ length: ticks + 1 }, (_, i) => yMin + (i / ticks) * (yMax - yMin))
+
+  // build points
+  const pts = allSorted.map((r, i) => {
+    const name  = r.test_name || r.sample_name || 'Result'
+    const color = colorOf(name)
+    if (r.result_type === 'pass_fail') {
+      return { x: toX(i), y: r.result_value === 'Pass' ? pad.t + cH * 0.15 : pad.t + cH * 0.85,
+               color: r.result_value === 'Pass' ? '#2a6049' : '#c84b2f',
+               shape: 'diamond', label: `${r.date} · ${name}: ${r.result_value}`, outlier: false }
+    }
+    const v = parseFloat(r.result_value)
+    return { x: toX(i), y: isNaN(v) ? null : toY(v),
+             color: isOutlier(r.result_value) ? '#c84b2f' : color,
+             shape: 'circle', label: `${r.date} · ${name}: ${r.result_value}${r.result_type === 'percentage' ? '%' : ''}`,
+             outlier: isOutlier(r.result_value) }
+  }).filter(p => p.y !== null)
+
+  // lines per sample name (numeric only)
+  const lineGroups = names.map(n => {
+    const grouped = pts.filter((p, i) => {
+      const r = allSorted[pts.indexOf ? i : 0]
+      return p.shape === 'circle'
+    })
+    // re-filter by name using original data
+    const namePts = allSorted
+      .map((r, i) => ({ r, i }))
+      .filter(({ r }) => (r.test_name || r.sample_name || 'Result') === n && ['number','percentage','temperature','ratio'].includes(r.result_type))
+      .map(({ r, i }) => ({ x: toX(i), y: toY(parseFloat(r.result_value)) }))
+      .filter(p => !isNaN(p.y))
+    if (namePts.length < 2) return null
+    const d = namePts.map((p, idx) => `${idx === 0 ? 'M' : 'L'}${p.x},${p.y}`).join(' ')
+    return { d, color: colorOf(n), n }
+  }).filter(Boolean)
+
+  return (
+    <div style={{ background: 'var(--surface)', border: '1px solid var(--border)', borderRadius: 'var(--radius-lg)', padding: '16px 20px' }}>
+      <div style={{ fontWeight: 600, fontSize: 13, marginBottom: 8 }}>Results by Sample</div>
+      <svg viewBox={`0 0 ${W} ${H}`} style={{ width: '100%', height: 'auto', overflow: 'visible', display: 'block' }}>
+        {/* Grid */}
+        {tickVals.map((v, i) => (
+          <g key={i}>
+            <line x1={pad.l} y1={toY(v)} x2={W - pad.r} y2={toY(v)} stroke="var(--border)" strokeWidth={0.8} strokeDasharray="3 3" />
+            <text x={pad.l - 5} y={toY(v)} textAnchor="end" dominantBaseline="middle" fontSize={9} fill="var(--text3)">
+              {Number.isInteger(v) ? v : v.toFixed(1)}
+            </text>
+          </g>
+        ))}
+        {/* Axes */}
+        <line x1={pad.l} y1={pad.t} x2={pad.l} y2={H - pad.b} stroke="var(--border)" strokeWidth={1} />
+        <line x1={pad.l} y1={H - pad.b} x2={W - pad.r} y2={H - pad.b} stroke="var(--border)" strokeWidth={1} />
+        {/* Lines per sample */}
+        {lineGroups.map((lg, i) => (
+          <path key={i} d={lg.d} fill="none" stroke={lg.color} strokeWidth={1.5} strokeOpacity={0.35} />
+        ))}
+        {/* Points */}
+        {pts.map((p, i) => (
+          p.shape === 'diamond'
+            ? <polygon key={i} points={`${p.x},${p.y - 5} ${p.x + 5},${p.y} ${p.x},${p.y + 5} ${p.x - 5},${p.y}`}
+                fill={p.color} stroke="white" strokeWidth={1.2} style={{ cursor: 'default' }}>
+                <title>{p.label}</title>
+              </polygon>
+            : <circle key={i} cx={p.x} cy={p.y} r={p.outlier ? 5.5 : 4.5}
+                fill={p.color} stroke="white" strokeWidth={1.5} style={{ cursor: 'default' }}>
+                <title>{p.label}{p.outlier ? ' ⚠️ outlier' : ''}</title>
+              </circle>
+        ))}
+        {/* X labels */}
+        {allSorted.map((r, i) => (
+          <text key={i} x={toX(i)} y={H - pad.b + 12} textAnchor="middle" fontSize={8.5} fill="var(--text3)"
+            transform={allSorted.length > 8 ? `rotate(-35,${toX(i)},${H - pad.b + 12})` : ''}>
+            {r.date ? r.date.slice(5) : i + 1}
+          </text>
+        ))}
+      </svg>
+      {/* Legend */}
+      {names.length > 1 && (
+        <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px 14px', marginTop: 6 }}>
+          {names.map(n => (
+            <span key={n} style={{ fontSize: 11, color: 'var(--text2)', display: 'flex', alignItems: 'center', gap: 5 }}>
+              <span style={{ width: 9, height: 9, borderRadius: '50%', background: colorOf(n), display: 'inline-block' }} />{n}
+            </span>
+          ))}
+          {passFail.length > 0 && <>
+            <span style={{ fontSize: 11, color: 'var(--text2)', display: 'flex', alignItems: 'center', gap: 5 }}>
+              <span style={{ width: 9, height: 9, background: '#2a6049', display: 'inline-block', clipPath: 'polygon(50% 0%,100% 50%,50% 100%,0% 50%)' }} />Pass
+            </span>
+            <span style={{ fontSize: 11, color: 'var(--text2)', display: 'flex', alignItems: 'center', gap: 5 }}>
+              <span style={{ width: 9, height: 9, background: '#c84b2f', display: 'inline-block', clipPath: 'polygon(50% 0%,100% 50%,50% 100%,0% 50%)' }} />Fail
+            </span>
+          </>}
+        </div>
+      )}
+      <div style={{ fontSize: 10, color: 'var(--text3)', marginTop: 6 }}>● Numeric · ◆ Pass/Fail · Red = outlier (&gt;2σ) · Hover for details</div>
+    </div>
+  )
+}
+
 // ── Data Analysis ─────────────────────────────────────────────
 function DataAnalysis() {
   const { session, toast } = useAppStore()
@@ -814,95 +944,8 @@ function DataAnalysis() {
                 ))}
               </div>
 
-              {/* Chart: results per sample name */}
-              {(() => {
-                const grouped = {}
-                filteredResults.forEach(r => {
-                  const key = r.test_name || r.sample_name || 'Unnamed'
-                  if (!grouped[key]) grouped[key] = []
-                  grouped[key].push(r)
-                })
-                const groups = Object.entries(grouped)
-                if (!groups.length) return null
-                const allNumeric  = groups.every(([, rs]) => rs.every(r => r.result_type === 'number' || r.result_type === 'percentage'))
-                const allPassFail = groups.every(([, rs]) => rs.every(r => r.result_type === 'pass_fail'))
-                const mixed = !allNumeric && !allPassFail
-
-                const barData = groups.map(([label, rs]) => {
-                  const nums = rs.map(r => parseFloat(r.result_value)).filter(v => !isNaN(v))
-                  const avg  = nums.length ? nums.reduce((a, b) => a + b, 0) / nums.length : null
-                  const pf   = rs.filter(r => r.result_type === 'pass_fail')
-                  const passCount = pf.filter(r => r.result_value === 'Pass').length
-                  const passRate  = pf.length ? Math.round((passCount / pf.length) * 100) : null
-                  return { label, count: rs.length, avg, passRate, passCount, failCount: pf.length - passCount, nums }
-                })
-                const maxAvg = Math.max(...barData.map(b => b.avg ?? 0), 0.001)
-
-                return (
-                  <div style={{ background: 'var(--surface)', border: '1px solid var(--border)', borderRadius: 'var(--radius-lg)', padding: '16px 20px' }}>
-                    <div style={{ fontWeight: 600, fontSize: 13, marginBottom: 16 }}>Results by Sample</div>
-                    <div style={{ overflowX: 'auto' }}>
-                      <div style={{ display: 'flex', alignItems: 'flex-end', gap: 8, minHeight: 120, paddingBottom: 28, position: 'relative' }}>
-                        {/* Y-axis line */}
-                        <div style={{ position: 'absolute', left: 0, top: 0, bottom: 28, width: 1, background: 'var(--border)' }} />
-                        {barData.map((b, idx) => {
-                          const isOk = b.passRate !== null ? b.passRate >= 80 : !isOutlier(b.avg)
-                          const barColor = b.passRate !== null
-                            ? (b.passRate >= 80 ? '#2a6049' : '#c84b2f')
-                            : isOutlier(b.avg) ? '#c84b2f' : 'var(--accent3)'
-
-                          if (b.passRate !== null) {
-                            // stacked pass/fail bar
-                            const totalH = 90
-                            const passH  = Math.round((b.passRate / 100) * totalH)
-                            const failH  = totalH - passH
-                            return (
-                              <div key={idx} style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', flex: '1 1 0', minWidth: 40, maxWidth: 80, gap: 0 }}>
-                                <div style={{ fontSize: 10, color: 'var(--text3)', marginBottom: 2 }}>{b.passRate}%</div>
-                                <div style={{ width: '70%' }}>
-                                  {failH > 0 && <div style={{ height: failH, background: '#c84b2f', borderRadius: failH === 90 ? '4px 4px 0 0' : '0', opacity: 0.85 }} />}
-                                  {passH > 0 && <div style={{ height: passH, background: '#2a6049', borderRadius: failH === 0 ? '4px 4px 0 0' : '0', opacity: 0.85 }} />}
-                                </div>
-                                <div style={{ fontSize: 10, color: 'var(--text3)', marginTop: 4, textAlign: 'center', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', maxWidth: '100%' }} title={b.label}>{b.label}</div>
-                                <div style={{ fontSize: 9, color: 'var(--text3)' }}>n={b.count}</div>
-                              </div>
-                            )
-                          }
-                          if (b.avg !== null) {
-                            const h = Math.max(4, Math.round((b.avg / maxAvg) * 90))
-                            return (
-                              <div key={idx} style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', flex: '1 1 0', minWidth: 40, maxWidth: 80 }}>
-                                <div style={{ fontSize: 10, color: 'var(--text3)', marginBottom: 2 }}>{b.avg.toFixed(1)}</div>
-                                <div style={{ width: '70%', height: h, background: barColor, borderRadius: '4px 4px 0 0', opacity: 0.85 }} />
-                                <div style={{ fontSize: 10, color: 'var(--text3)', marginTop: 4, textAlign: 'center', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', maxWidth: '100%' }} title={b.label}>{b.label}</div>
-                                <div style={{ fontSize: 9, color: 'var(--text3)' }}>n={b.count}</div>
-                              </div>
-                            )
-                          }
-                          // text / mixed
-                          return (
-                            <div key={idx} style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', flex: '1 1 0', minWidth: 40, maxWidth: 80 }}>
-                              <div style={{ fontSize: 11, fontWeight: 700, color: 'var(--accent3)', marginBottom: 2 }}>{b.count}</div>
-                              <div style={{ width: '70%', height: Math.max(4, b.count * 12), background: 'var(--accent3)', borderRadius: '4px 4px 0 0', opacity: 0.5 }} />
-                              <div style={{ fontSize: 10, color: 'var(--text3)', marginTop: 4, textAlign: 'center', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', maxWidth: '100%' }} title={b.label}>{b.label}</div>
-                              <div style={{ fontSize: 9, color: 'var(--text3)' }}>entries</div>
-                            </div>
-                          )
-                        })}
-                      </div>
-                    </div>
-                    {barData.some(b => b.passRate !== null) && (
-                      <div style={{ display: 'flex', gap: 12, fontSize: 11, color: 'var(--text3)', marginTop: 4 }}>
-                        <span><span style={{ display: 'inline-block', width: 10, height: 10, background: '#2a6049', borderRadius: 2, marginRight: 4 }} />Pass</span>
-                        <span><span style={{ display: 'inline-block', width: 10, height: 10, background: '#c84b2f', borderRadius: 2, marginRight: 4 }} />Fail</span>
-                      </div>
-                    )}
-                    {barData.some(b => b.avg !== null) && (
-                      <div style={{ fontSize: 11, color: 'var(--text3)', marginTop: 4 }}>Bar height = average value per sample · Red = outlier (&gt;2× std dev)</div>
-                    )}
-                  </div>
-                )
-              })()}
+              {/* Chart: point graph */}
+              <PointChart results={filteredResults} isOutlier={isOutlier} />
 
               {/* Results table + sample info panel */}
               <div style={{ display: 'grid', gridTemplateColumns: selectedRow ? '1fr 280px' : '1fr', gap: 12, alignItems: 'start' }}>
