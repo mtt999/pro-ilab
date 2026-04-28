@@ -508,6 +508,143 @@ function BookingDetail({ booking, equipment, session, onEdit, onDelete, onDeny, 
   )
 }
 
+// ── Multi-Equipment Booking Modal ─────────────────────────────
+function MultiBookingModal({ equipmentList, defaultSlot, session, onSave, onClose }) {
+  const { toast } = useAppStore()
+  const [times, setTimes] = useState(
+    Object.fromEntries(equipmentList.map(e => [e.id, { start: defaultSlot?.start || '', end: defaultSlot?.end || '' }]))
+  )
+  const [purposes, setPurposes] = useState([])
+  const [notes, setNotes]       = useState('')
+  const [behalf, setBehalf]     = useState('')
+  const [saving, setSaving]     = useState(false)
+  const [editingId, setEditingId] = useState(null)
+
+  function setTime(id, field, val) {
+    setTimes(prev => ({ ...prev, [id]: { ...prev[id], [field]: val } }))
+  }
+
+  function applyToAll(id) {
+    const src = times[id]
+    setTimes(prev => Object.fromEntries(Object.keys(prev).map(k => [k, { ...src }])))
+    toast('Time applied to all equipment ✓')
+  }
+
+  async function bookAll() {
+    for (const e of equipmentList) {
+      const t = times[e.id]
+      if (!t.start || !t.end) { toast(`Set time for: ${e.nickname || e.equipment_name}`); return }
+      if (new Date(t.start) >= new Date(t.end)) { toast(`End must be after start for: ${e.nickname || e.equipment_name}`); return }
+    }
+    setSaving(true)
+    const title = purposes.join(', ')
+    let failed = 0
+    for (const e of equipmentList) {
+      const t = times[e.id]
+      const { error } = await sb.from('equipment_bookings').insert({
+        equipment_id: e.id,
+        user_id: session.userId,
+        user_name: session.username,
+        title,
+        start_time: new Date(t.start).toISOString(),
+        end_time:   new Date(t.end).toISOString(),
+        status: 'confirmed',
+        notes: notes.trim() || null,
+        booked_on_behalf_of: behalf.trim() || null,
+        created_by: session.username,
+      })
+      if (error) failed++
+    }
+    setSaving(false)
+    if (failed > 0) toast(`${failed} booking(s) failed — check conflicts.`)
+    else toast(`${equipmentList.length} bookings confirmed ✓`)
+    onSave(); onClose()
+  }
+
+  return (
+    <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.45)', zIndex: 300, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 16 }}>
+      <div style={{ background: 'var(--surface)', borderRadius: 'var(--radius-lg)', padding: 28, maxWidth: 580, width: '100%', border: '1px solid var(--border)', maxHeight: '90vh', overflowY: 'auto' }}>
+        <div style={{ fontWeight: 700, fontSize: 16, marginBottom: 4 }}>Book {equipmentList.length} Equipment</div>
+        <div style={{ fontSize: 13, color: 'var(--text3)', marginBottom: 20 }}>Set a time for each. Purpose and notes apply to all.</div>
+
+        {/* Per-equipment time rows */}
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 10, marginBottom: 20 }}>
+          {equipmentList.map(e => {
+            const t = times[e.id]
+            const isEditing = editingId === e.id
+            const hasTime = t.start && t.end
+            return (
+              <div key={e.id} style={{ background: 'var(--surface2)', border: `1.5px solid ${isEditing ? 'var(--accent)' : hasTime ? 'var(--border)' : '#f0c070'}`, borderRadius: 10, padding: '12px 14px' }}>
+                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: isEditing ? 10 : 0 }}>
+                  <span style={{ fontWeight: 600, fontSize: 13 }}>{e.nickname || e.equipment_name}</span>
+                  {!isEditing && (
+                    <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
+                      <span style={{ fontSize: 11, fontFamily: 'var(--mono)', color: hasTime ? 'var(--text2)' : '#a0762a' }}>
+                        {hasTime ? `${fmtDateTime(t.start)} → ${fmtDateTime(t.end)}` : 'No time set'}
+                      </span>
+                      <button className="btn btn-sm" onClick={() => setEditingId(e.id)} style={{ fontSize: 11, padding: '2px 10px' }}>📅 Edit</button>
+                    </div>
+                  )}
+                </div>
+                {isEditing && (
+                  <div>
+                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10, marginBottom: 8 }}>
+                      <div className="field" style={{ margin: 0 }}>
+                        <label style={{ fontSize: 11 }}>Start</label>
+                        <input type="datetime-local" value={t.start} onChange={ev => setTime(e.id, 'start', ev.target.value)} style={{ fontSize: 12 }} />
+                      </div>
+                      <div className="field" style={{ margin: 0 }}>
+                        <label style={{ fontSize: 11 }}>End</label>
+                        <input type="datetime-local" value={t.end} onChange={ev => setTime(e.id, 'end', ev.target.value)} style={{ fontSize: 12 }} />
+                      </div>
+                    </div>
+                    <div style={{ display: 'flex', gap: 8 }}>
+                      <button className="btn btn-sm btn-primary" onClick={() => setEditingId(null)} style={{ fontSize: 11 }}>✓ Done</button>
+                      <button className="btn btn-sm" onClick={() => applyToAll(e.id)} style={{ fontSize: 11 }}>Copy to all</button>
+                    </div>
+                  </div>
+                )}
+              </div>
+            )
+          })}
+        </div>
+
+        {/* Book on behalf of */}
+        <div className="field">
+          <label>Book on behalf of (optional)</label>
+          <input value={behalf} onChange={e => setBehalf(e.target.value)} placeholder="e.g. student name" />
+        </div>
+
+        {/* Purpose */}
+        <div className="field">
+          <label>Purpose (select all that apply)</label>
+          <div style={{ display: 'flex', gap: 20 }}>
+            {['Project', 'Thesis', 'Other'].map(p => (
+              <label key={p} style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 14, cursor: 'pointer' }}>
+                <input type="checkbox" checked={purposes.includes(p)} onChange={ev => setPurposes(prev => ev.target.checked ? [...prev, p] : prev.filter(x => x !== p))} />
+                {p}
+              </label>
+            ))}
+          </div>
+        </div>
+
+        {/* Notes */}
+        <div className="field">
+          <label>Notes</label>
+          <textarea rows={2} value={notes} onChange={e => setNotes(e.target.value)} placeholder="Notes applied to all bookings…" style={{ resize: 'vertical' }} />
+        </div>
+
+        <div style={{ display: 'flex', gap: 10, marginTop: 8 }}>
+          <button className="btn btn-primary" onClick={bookAll} disabled={saving}>
+            {saving ? 'Booking…' : `Book All ${equipmentList.length}`}
+          </button>
+          <button className="btn" onClick={onClose}>Cancel</button>
+        </div>
+      </div>
+    </div>
+  )
+}
+
 // ══════════════════════════════════════════════════════════════
 // TAB 1 — BOOKING CALENDAR
 // ══════════════════════════════════════════════════════════════
@@ -520,6 +657,8 @@ function BookingCalendar({ session }) {
   const [weekStart, setWeekStart] = useState(startOfWeek(new Date()))
   const [monthDate, setMonthDate] = useState(new Date())
   const [showBookingModal, setShowBookingModal] = useState(false)
+  const [showMultiModal, setShowMultiModal] = useState(false)
+  const [multiSlot, setMultiSlot] = useState(null)
   const [bookingDraft, setBookingDraft] = useState(null)
   const [editBooking, setEditBooking] = useState(null)
   const [detailBooking, setDetailBooking] = useState(null)
@@ -626,24 +765,28 @@ function BookingCalendar({ session }) {
 
   function handleSlotClick(slot) {
     if (selectedEq.length === 0) return
-    // Check if any selected equipment requires retraining
     const blockedSelected = selectedEq.filter(id => retrainingBlocked.includes(id))
     if (blockedSelected.length > 0) {
       const names = blockedSelected.map(id => equipment.find(e => e.id === id)?.nickname || 'equipment').join(', ')
       alert(`⚠️ Retraining required\n\n${names} requires retraining before booking. Please go to the Training Records tab and submit a retraining request.`)
       return
     }
-    setBookingDraft(slot)
-    setEditBooking(null)
-    setShowBookingModal(true)
+    if (selectedEq.length > 1) {
+      setMultiSlot(slot); setShowMultiModal(true)
+    } else {
+      setBookingDraft(slot); setEditBooking(null); setShowBookingModal(true)
+    }
   }
 
   function handleDayClick(day) {
     const start = new Date(day); start.setHours(9, 0, 0, 0)
-    const end = new Date(day); end.setHours(17, 0, 0, 0)
-    setBookingDraft({ start: start.toISOString().slice(0,16), end: end.toISOString().slice(0,16) })
-    setEditBooking(null)
-    setShowBookingModal(true)
+    const end   = new Date(day); end.setHours(17, 0, 0, 0)
+    const slot  = { start: start.toISOString().slice(0,16), end: end.toISOString().slice(0,16) }
+    if (selectedEq.length > 1) {
+      setMultiSlot(slot); setShowMultiModal(true)
+    } else {
+      setBookingDraft(slot); setEditBooking(null); setShowBookingModal(true)
+    }
   }
 
   async function handleDeny(booking, reason) {
@@ -744,7 +887,10 @@ function BookingCalendar({ session }) {
           <div style={{ display: 'flex', gap: 4 }}>
             <button className="btn btn-sm" style={{ background: calView === 'week' ? 'var(--accent-light)' : 'transparent', color: calView === 'week' ? 'var(--accent)' : 'var(--text2)', fontWeight: calView === 'week' ? 600 : 400 }} onClick={() => setCalView('week')}>Week</button>
             <button className="btn btn-sm" style={{ background: calView === 'month' ? 'var(--accent-light)' : 'transparent', color: calView === 'month' ? 'var(--accent)' : 'var(--text2)', fontWeight: calView === 'month' ? 600 : 400 }} onClick={() => setCalView('month')}>Month</button>
-            <button className="btn btn-sm btn-primary" onClick={() => { setBookingDraft(null); setEditBooking(null); setShowBookingModal(true) }}>+ Book</button>
+            <button className="btn btn-sm btn-primary" onClick={() => {
+              if (selectedEq.length > 1) { setMultiSlot(null); setShowMultiModal(true) }
+              else { setBookingDraft(null); setEditBooking(null); setShowBookingModal(true) }
+            }}>+ Book</button>
           </div>
         </div>
 
@@ -780,6 +926,15 @@ function BookingCalendar({ session }) {
       </div>
 
       {/* Modals */}
+      {showMultiModal && (
+        <MultiBookingModal
+          equipmentList={equipment.filter(e => selectedEq.includes(e.id))}
+          defaultSlot={multiSlot}
+          session={session}
+          onSave={loadBookings}
+          onClose={() => { setShowMultiModal(false); setMultiSlot(null) }}
+        />
+      )}
       {showBookingModal && (
         <BookingModal
           booking={editBooking}
