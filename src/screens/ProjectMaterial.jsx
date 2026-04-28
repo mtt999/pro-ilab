@@ -612,53 +612,94 @@ function ResultsTab({ projects, session }) {
         </div>
       )}
 
-      {/* Results list */}
+      {/* Results list — grouped by project → equipment */}
       {loading ? (
         <div style={{ textAlign: 'center', padding: 32 }}><div className="spinner" style={{ margin: '0 auto' }} /></div>
       ) : results.length === 0 ? (
         <div className="empty-state"><div className="empty-icon">🧪</div><div>No results yet. Click "+ Add Result" to get started.</div></div>
-      ) : (
-        <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
-          {results.map(r => (
-            <div key={r.id} className="card" style={{ padding: '14px 18px' }}>
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 12, flexWrap: 'wrap' }}>
-                <div style={{ flex: 1, minWidth: 0 }}>
-                  {/* Test name */}
-                  <div style={{ fontWeight: 700, fontSize: 14, marginBottom: 6 }}>{r.test_name || 'Untitled Test'}</div>
-                  {/* Tags */}
-                  <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', marginBottom: 8 }}>
-                    {r.project_id && projectMap[r.project_id] && (
-                      <span style={{ fontSize: 12, background: '#e8f0fe', color: '#1a56db', borderRadius: 99, padding: '2px 10px', fontWeight: 600 }}>📁 {projectMap[r.project_id]}</span>
-                    )}
-                    {r.equipment_id && equipMap[r.equipment_id] && (
-                      <span style={{ fontSize: 12, background: 'var(--surface2)', color: 'var(--text2)', borderRadius: 99, padding: '2px 10px' }}>🔧 {equipMap[r.equipment_id]}</span>
-                    )}
-                    <span style={{ fontSize: 12, background: 'var(--surface2)', color: 'var(--text2)', borderRadius: 99, padding: '2px 10px', textTransform: 'capitalize' }}>
-                      {RESULT_TYPES.find(t => t.value === r.result_type)?.label || r.result_type}
-                    </span>
+      ) : (() => {
+        // build nested map: projectId → equipmentId → [results]
+        const byProject = {}
+        results.forEach(r => {
+          const pid = r.project_id || '__none__'
+          const eid = r.equipment_id || '__none__'
+          if (!byProject[pid]) byProject[pid] = {}
+          if (!byProject[pid][eid]) byProject[pid][eid] = []
+          byProject[pid][eid].push(r)
+        })
+        const projectOrder = Object.keys(byProject).sort((a, b) => {
+          const na = projectMap[a] || 'zzz'
+          const nb = projectMap[b] || 'zzz'
+          return na.localeCompare(nb)
+        })
+        return (
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 20 }}>
+            {projectOrder.map(pid => {
+              const projectName = projectMap[pid] || 'No Project'
+              const equipIds    = Object.keys(byProject[pid]).sort((a, b) => (equipMap[a] || 'zzz').localeCompare(equipMap[b] || 'zzz'))
+              return (
+                <div key={pid}>
+                  {/* Project header */}
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 10 }}>
+                    <span style={{ fontSize: 13, fontWeight: 700, color: '#1a56db', background: '#e8f0fe', borderRadius: 8, padding: '4px 14px' }}>📁 {projectName}</span>
+                    <div style={{ flex: 1, height: 1, background: 'var(--border)' }} />
                   </div>
-                  {/* Result value */}
-                  <div style={{ fontSize: 18, fontWeight: 700, color: r.result_value === 'Pass' ? '#2a6049' : r.result_value === 'Fail' ? '#c84b2f' : 'var(--accent)', marginBottom: 4 }}>
-                    {formatResultValue(r.result_type, r.result_value)}
+
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: 14, paddingLeft: 12 }}>
+                    {equipIds.map(eid => {
+                      const equipName = equipMap[eid] || 'No Equipment'
+                      const rows = byProject[pid][eid]
+                      return (
+                        <div key={eid}>
+                          {/* Equipment sub-header */}
+                          <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 8 }}>
+                            <span style={{ fontSize: 12, fontWeight: 600, color: 'var(--text2)', background: 'var(--surface2)', borderRadius: 6, padding: '3px 12px' }}>🔧 {equipName}</span>
+                            <div style={{ flex: 1, height: 1, background: 'var(--border)', opacity: 0.5 }} />
+                            <span style={{ fontSize: 11, color: 'var(--text3)' }}>{rows.length} result{rows.length !== 1 ? 's' : ''}</span>
+                          </div>
+
+                          <div style={{ display: 'flex', flexDirection: 'column', gap: 8, paddingLeft: 10 }}>
+                            {rows.map(r => (
+                              <div key={r.id} className="card" style={{ padding: '12px 16px' }}>
+                                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 12, flexWrap: 'wrap' }}>
+                                  <div style={{ flex: 1, minWidth: 0 }}>
+                                    <div style={{ fontWeight: 700, fontSize: 14, marginBottom: 4 }}>{r.test_name || 'Untitled Test'}</div>
+                                    {r.specimen_name && <div style={{ fontSize: 12, color: 'var(--text2)', marginBottom: 6 }}>Specimen: <strong>{r.specimen_name}</strong></div>}
+                                    <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', marginBottom: 6 }}>
+                                      <span style={{ fontSize: 11, background: 'var(--surface2)', color: 'var(--text2)', borderRadius: 99, padding: '2px 9px', textTransform: 'capitalize' }}>
+                                        {RESULT_TYPES.find(t => t.value === r.result_type)?.label || r.result_type}
+                                      </span>
+                                    </div>
+                                    <div style={{ fontSize: 18, fontWeight: 700, color: r.result_value === 'Pass' ? '#2a6049' : r.result_value === 'Fail' ? '#c84b2f' : 'var(--accent)', marginBottom: 2 }}>
+                                      {formatResultValue(r.result_type, r.result_value)}
+                                    </div>
+                                    {r.explanation && <div style={{ fontSize: 13, color: 'var(--text2)', lineHeight: 1.5, marginTop: 4 }}>{r.explanation}</div>}
+                                    {r.created_by && <div style={{ fontSize: 11, color: 'var(--text3)', marginTop: 4 }}>by {r.created_by}</div>}
+                                  </div>
+                                  <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: 6, flexShrink: 0 }}>
+                                    <div style={{ fontSize: 12, color: 'var(--text3)', textAlign: 'right' }}>
+                                      {r.date && <div style={{ fontWeight: 600 }}>{r.date}</div>}
+                                      <div>{new Date(r.created_at).toLocaleDateString()}</div>
+                                    </div>
+                                    <div style={{ display: 'flex', gap: 6 }}>
+                                      <button onClick={() => openEdit(r)} className="btn btn-sm" style={{ fontSize: 12, padding: '3px 10px' }}>✏️ Edit</button>
+                                      <button onClick={() => deleteResult(r.id)} className="btn btn-sm" style={{ fontSize: 12, padding: '3px 10px', color: '#c84b2f' }}>🗑</button>
+                                    </div>
+                                  </div>
+                                </div>
+                              </div>
+                            ))}
+                          </div>
+                        </div>
+                      )
+                    })}
                   </div>
-                  {r.explanation && <div style={{ fontSize: 13, color: 'var(--text2)', lineHeight: 1.5, marginTop: 4 }}>{r.explanation}</div>}
-                  {r.created_by && <div style={{ fontSize: 11, color: 'var(--text3)', marginTop: 6 }}>by {r.created_by}</div>}
                 </div>
-                <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: 6, flexShrink: 0 }}>
-                  <div style={{ fontSize: 12, color: 'var(--text3)', textAlign: 'right' }}>
-                    {r.date && <div style={{ fontWeight: 600 }}>{r.date}</div>}
-                    <div>{new Date(r.created_at).toLocaleDateString()}</div>
-                  </div>
-                  <div style={{ display: 'flex', gap: 6 }}>
-                    <button onClick={() => openEdit(r)} className="btn btn-sm" style={{ fontSize: 12, padding: '3px 10px' }}>✏️ Edit</button>
-                    <button onClick={() => deleteResult(r.id)} className="btn btn-sm" style={{ fontSize: 12, padding: '3px 10px', color: '#c84b2f' }}>🗑</button>
-                  </div>
-                </div>
-              </div>
-            </div>
-          ))}
-        </div>
-      )}
+              )
+            })}
+          </div>
+        )
+      })()}
     </div>
   )
 }
