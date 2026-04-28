@@ -668,6 +668,7 @@ function DataAnalysis() {
   const [postingCmt, setPostingCmt] = useState(false)
   const [dateFrom, setDateFrom]     = useState('')
   const [dateTo, setDateTo]         = useState('')
+  const [selectedRow, setSelectedRow] = useState(null)
 
   useEffect(() => {
     sb.from('equipment_inventory').select('id, equipment_name, category').eq('is_active', true).order('category').order('equipment_name')
@@ -895,10 +896,7 @@ function DataAnalysis() {
               })()}
 
               {/* Results table + sample info panel */}
-              {(() => {
-                const [selectedRow, setSelectedRow] = useState(null)
-                return (
-                  <div style={{ display: 'grid', gridTemplateColumns: selectedRow ? '1fr 280px' : '1fr', gap: 12, alignItems: 'start' }}>
+              <div style={{ display: 'grid', gridTemplateColumns: selectedRow ? '1fr 280px' : '1fr', gap: 12, alignItems: 'start' }}>
                     <div style={{ background: 'var(--surface)', border: '1px solid var(--border)', borderRadius: 'var(--radius-lg)', overflow: 'hidden' }}>
                       <div style={{ padding: '12px 16px', borderBottom: '1px solid var(--border)', fontWeight: 600, fontSize: 13 }}>All Results <span style={{ fontSize: 11, color: 'var(--text3)', fontWeight: 400 }}>— click a row for details</span></div>
                       <div style={{ overflowX: 'auto' }}>
@@ -961,9 +959,7 @@ function DataAnalysis() {
                         </div>
                       </div>
                     )}
-                  </div>
-                )
-              })()}
+              </div>
             </>
           )}
 
