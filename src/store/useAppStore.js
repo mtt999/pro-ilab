@@ -5,7 +5,7 @@ export const useAppStore = create((set, get) => ({
   // ── Auth ──
   session: null,
   setSession: (s) => set({ session: s }),
-  clearSession: () => set({ session: null, sharedWorkspaces: [], viewingWorkspaceOwnerId: null, activeModules: null }),
+  clearSession: () => set({ session: null, loginMode: null, sharedWorkspaces: [], viewingWorkspaceOwnerId: null, activeModules: null, currentProjectId: null }),
 
   // ── Active dashboard modules (icon picker) ──
   activeModules: null,
@@ -56,10 +56,6 @@ export const useAppStore = create((set, get) => ({
   // ── Last completed inspection record ──
   lastRecord: null,
   setLastRecord: (r) => set({ lastRecord: r }),
-
-  // ── Dashboard module selection ──
-  activeModules: null,
-  setActiveModules: (m) => set({ activeModules: m }),
 
   // ── Current project ──
   currentProjectId: null,

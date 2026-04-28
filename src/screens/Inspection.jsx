@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { useAppStore } from '../store/useAppStore'
 import { sb } from '../lib/supabase'
 
@@ -6,7 +6,8 @@ export default function Inspection() {
   const { inspection, setInspection, setScreen, setLastRecord, session, toast } = useAppStore()
   const [tab, setTab] = useState('count')
 
-  if (!inspection) { setScreen('home'); return null }
+  useEffect(() => { if (!inspection) setScreen('home') }, [inspection])
+  if (!inspection) return null
 
   const { items, index, results } = inspection
   const item = items[index]

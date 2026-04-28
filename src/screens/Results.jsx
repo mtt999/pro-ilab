@@ -1,4 +1,5 @@
 import * as XLSX from 'xlsx'
+import { useEffect } from 'react'
 import { useAppStore } from '../store/useAppStore'
 import { sb } from '../lib/supabase'
 
@@ -7,7 +8,8 @@ function fmtLinks(links) { return (links || []).map(l => `${l.label || 'Link'}: 
 
 export default function Results() {
   const { lastRecord, setScreen, toast } = useAppStore()
-  if (!lastRecord) { setScreen('home'); return null }
+  useEffect(() => { if (!lastRecord) setScreen('home') }, [lastRecord])
+  if (!lastRecord) return null
 
   const results = lastRecord.results || []
   const low = results.filter(r => r.low)
