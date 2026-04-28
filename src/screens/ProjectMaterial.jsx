@@ -1,5 +1,5 @@
 import HelpPanel from '../components/HelpPanel'
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import { sb } from '../lib/supabase'
 import { useAppStore } from '../store/useAppStore'
 import Modal from '../components/Modal'
@@ -433,6 +433,8 @@ function ResultsTab({ projects, session }) {
   const [showEquipPicker, setShowEquipPicker] = useState(false)
   const [drillProject, setDrillProject] = useState(null) // project id
   const [drillEquip,   setDrillEquip]   = useState(null) // equipment id
+  const [uploadFile,   setUploadFile]   = useState(null)
+  const fileInputRef = useRef(null)
 
   useEffect(() => {
     sb.from('equipment_inventory').select('id, equipment_name, category').eq('is_active', true).order('category').order('equipment_name')
@@ -466,29 +468,54 @@ function ResultsTab({ projects, session }) {
     setEditingId(r.id); setShowForm(true)
   }
 
-  function cancelForm() { setShowForm(false); setEditingId(null); setForm(emptyForm); setSelectedEquip(null) }
+  function cancelForm() { setShowForm(false); setEditingId(null); setForm(emptyForm); setSelectedEquip(null); setUploadFile(null); if (fileInputRef.current) fileInputRef.current.value = '' }
 
   async function save() {
-    if (!form.test_name.trim())  { toast('Test name is required.'); return }
-    if (!form.project_id)        { toast('Select a project.'); return }
-    if (!form.equipment_id)      { toast('Select equipment.'); return }
-    if (form.result_value === '') { toast('Enter a result value.'); return }
+    if (!form.test_name.trim()) { toast('Test name is required.'); return }
+    if (!form.project_id)       { toast('Select a project.'); return }
+    if (!form.equipment_id)     { toast('Select equipment.'); return }
     setSaving(true)
     const payload = {
       test_name: form.test_name.trim(),
       sample_name: form.test_name.trim(),
       specimen_name: form.specimen_name.trim() || null,
       project_id: form.project_id,
-      equipment_id: form.equipment_id, result_type: form.result_type,
-      result_value: String(form.result_value),
+      equipment_id: form.equipment_id,
+      result_type: form.result_type || null,
+      result_value: form.result_value !== '' ? String(form.result_value) : null,
       explanation: form.description.trim() || null,
       date: form.result_date || null,
       created_by: session?.username || session?.name || session?.email || null,
     }
-    const { error } = editingId
-      ? await sb.from('test_result_entries').update(payload).eq('id', editingId)
-      : await sb.from('test_result_entries').insert(payload)
-    if (error) { toast('Save failed: ' + error.message); setSaving(false); return }
+    let savedId = editingId
+    if (editingId) {
+      const { error } = await sb.from('test_result_entries').update(payload).eq('id', editingId)
+      if (error) { toast('Save failed: ' + error.message); setSaving(false); return }
+    } else {
+      const { data, error } = await sb.from('test_result_entries').insert(payload).select('id').single()
+      if (error) { toast('Save failed: ' + error.message); setSaving(false); return }
+      savedId = data.id
+    }
+    if (uploadFile && savedId) {
+      const path = `${form.project_id}/${form.equipment_id}/${Date.now()}-${uploadFile.name}`
+      const { error: upErr } = await sb.storage.from('project-records').upload(path, uploadFile, { contentType: uploadFile.type, upsert: false })
+      if (!upErr) {
+        const { data: urlData } = sb.storage.from('project-records').getPublicUrl(path)
+        await sb.from('project_record_files').insert({
+          project_id: form.project_id,
+          equipment_id: form.equipment_id || null,
+          test_result_id: savedId,
+          file_name: uploadFile.name,
+          file_path: path,
+          file_url: urlData.publicUrl,
+          file_size: uploadFile.size,
+          file_type: uploadFile.type,
+          created_by: session?.username || session?.name || null,
+        })
+      } else {
+        toast('Result saved but file upload failed — check storage bucket.')
+      }
+    }
     toast(editingId ? 'Result updated ✓' : 'Result saved ✓')
     setSaving(false); cancelForm(); loadResults()
   }
@@ -588,14 +615,14 @@ function ResultsTab({ projects, session }) {
           {/* Row 4: Result Type + Value */}
           <div className="grid-2">
             <div className="field">
-              <label>Result Type *</label>
+              <label>Result Type</label>
               <select value={form.result_type} onChange={e => setForm(f => ({ ...f, result_type: e.target.value, result_value: '' }))}>
                 {RESULT_TYPES.map(t => <option key={t.value} value={t.value}>{t.label}</option>)}
               </select>
               <div style={{ fontSize: 11, color: 'var(--text3)', marginTop: 3 }}>{RESULT_TYPES.find(t => t.value === form.result_type)?.hint}</div>
             </div>
             <div className="field">
-              <label>Result Value *</label>
+              <label>Result Value</label>
               <ResultValueInput type={form.result_type} value={form.result_value} onChange={v => setForm(f => ({ ...f, result_value: v }))} />
             </div>
           </div>
@@ -605,6 +632,25 @@ function ResultsTab({ projects, session }) {
             <label>Notes / Description</label>
             <textarea rows={3} value={form.description} onChange={e => setForm(f => ({ ...f, description: e.target.value }))}
               placeholder="Observations, conditions, sample details…" style={{ resize: 'vertical' }} />
+          </div>
+
+          {/* Row 6: File upload */}
+          <div className="field">
+            <label>Upload File <span style={{ fontWeight: 400, color: 'var(--text3)' }}>(optional — PDF, CSV, image, etc.)</span></label>
+            <div style={{ border: '1.5px dashed var(--border)', borderRadius: 8, padding: '14px 16px', background: 'var(--surface2)', display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap' }}>
+              <input ref={fileInputRef} type="file"
+                accept=".pdf,.csv,.txt,.xlsx,.xls,.png,.jpg,.jpeg,.gif,.webp,.svg,.doc,.docx,.ppt,.pptx,.zip"
+                onChange={e => setUploadFile(e.target.files?.[0] || null)}
+                style={{ flex: 1, fontSize: 13, minWidth: 0 }} />
+              {uploadFile && (
+                <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexShrink: 0 }}>
+                  <span style={{ fontSize: 12, color: 'var(--accent)', fontWeight: 600 }}>{uploadFile.name}</span>
+                  <button type="button" onClick={() => { setUploadFile(null); if (fileInputRef.current) fileInputRef.current.value = '' }}
+                    style={{ border: 'none', background: 'none', cursor: 'pointer', color: 'var(--text3)', fontSize: 16, lineHeight: 1, padding: 0 }}>✕</button>
+                </div>
+              )}
+            </div>
+            <div style={{ fontSize: 11, color: 'var(--text3)', marginTop: 4 }}>File will appear in Workspace → Records, organized by project and equipment.</div>
           </div>
 
           <div style={{ display: 'flex', gap: 10 }}>
@@ -1184,6 +1230,141 @@ function DataAnalysis() {
   )
 }
 
+// ── Records Panel ───────────────────────────────────────────────
+function RecordsPanel({ projects }) {
+  const [files, setFiles] = useState([])
+  const [loading, setLoading] = useState(true)
+  const [drillProject, setDrillProject] = useState(null)
+  const [drillEquip, setDrillEquip] = useState(null)
+  const [equipment, setEquipment] = useState([])
+
+  useEffect(() => {
+    sb.from('equipment_inventory').select('id, equipment_name').then(({ data }) => setEquipment(data || []))
+  }, [])
+
+  useEffect(() => { loadFiles() }, [projects.length])
+
+  async function loadFiles() {
+    setLoading(true)
+    const ids = projects.map(p => p.id)
+    if (!ids.length) { setFiles([]); setLoading(false); return }
+    const { data } = await sb.from('project_record_files').select('*').in('project_id', ids).order('created_at', { ascending: false })
+    setFiles(data || [])
+    setLoading(false)
+  }
+
+  const projectMap = Object.fromEntries(projects.map(p => [p.id, p.name || p.project_name]))
+  const equipMap = Object.fromEntries(equipment.map(e => [e.id, e.equipment_name]))
+
+  const byProject = {}
+  files.forEach(f => {
+    const pid = f.project_id || '__none__'
+    const eid = f.equipment_id || '__none__'
+    if (!byProject[pid]) byProject[pid] = {}
+    if (!byProject[pid][eid]) byProject[pid][eid] = []
+    byProject[pid][eid].push(f)
+  })
+
+  const fileIcon = t => {
+    if (!t) return '📄'
+    if (t.includes('pdf')) return '📑'
+    if (t.includes('image')) return '🖼️'
+    if (t.includes('csv') || t.includes('spreadsheet') || t.includes('excel')) return '📊'
+    if (t.includes('text') || t.includes('plain')) return '📝'
+    if (t.includes('zip') || t.includes('compressed')) return '🗜️'
+    if (t.includes('word') || t.includes('document')) return '📃'
+    return '📄'
+  }
+
+  const fmtSize = b => {
+    if (!b) return ''
+    if (b < 1024) return `${b} B`
+    if (b < 1024 * 1024) return `${(b / 1024).toFixed(1)} KB`
+    return `${(b / 1024 / 1024).toFixed(1)} MB`
+  }
+
+  if (loading) return <div style={{ textAlign: 'center', padding: 32 }}><div className="spinner" style={{ margin: '0 auto' }} /></div>
+  if (files.length === 0) return <div className="empty-state"><div className="empty-icon">📂</div><div>No files uploaded yet. Add files when submitting test results.</div></div>
+
+  // Level 3: files for project + equipment
+  if (drillProject && drillEquip) {
+    const rows = byProject[drillProject]?.[drillEquip] || []
+    return (
+      <div>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 13, marginBottom: 16, flexWrap: 'wrap' }}>
+          <button onClick={() => { setDrillProject(null); setDrillEquip(null) }} style={{ border: 'none', background: 'none', cursor: 'pointer', color: 'var(--accent)', fontWeight: 600, padding: 0, fontSize: 13 }}>All Projects</button>
+          <span style={{ color: 'var(--text3)' }}>›</span>
+          <button onClick={() => setDrillEquip(null)} style={{ border: 'none', background: 'none', cursor: 'pointer', color: 'var(--accent)', fontWeight: 600, padding: 0, fontSize: 13 }}>{projectMap[drillProject] || 'Project'}</button>
+          <span style={{ color: 'var(--text3)' }}>›</span>
+          <span style={{ fontWeight: 600 }}>{drillEquip === '__none__' ? 'No Equipment' : (equipMap[drillEquip] || 'Equipment')}</span>
+        </div>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+          {rows.map(f => (
+            <div key={f.id} style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '10px 14px', background: 'var(--surface2)', borderRadius: 8, border: '1px solid var(--border)' }}>
+              <div style={{ fontSize: 26, flexShrink: 0 }}>{fileIcon(f.file_type)}</div>
+              <div style={{ flex: 1, minWidth: 0 }}>
+                <div style={{ fontWeight: 600, fontSize: 13, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', marginBottom: 2 }}>{f.file_name}</div>
+                <div style={{ fontSize: 11, color: 'var(--text3)' }}>
+                  {fmtSize(f.file_size)}{f.file_size ? ' · ' : ''}{new Date(f.created_at).toLocaleDateString()}{f.created_by ? ` · ${f.created_by}` : ''}
+                </div>
+              </div>
+              <a href={f.file_url} target="_blank" rel="noopener noreferrer"
+                style={{ padding: '5px 14px', borderRadius: 6, border: '1px solid var(--border)', background: 'var(--surface)', color: 'var(--text2)', fontSize: 12, fontWeight: 600, textDecoration: 'none', whiteSpace: 'nowrap', flexShrink: 0 }}>
+                ↓ Download
+              </a>
+            </div>
+          ))}
+        </div>
+      </div>
+    )
+  }
+
+  // Level 2: equipment list for a project
+  if (drillProject) {
+    const equips = byProject[drillProject] || {}
+    return (
+      <div>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 13, marginBottom: 16 }}>
+          <button onClick={() => setDrillProject(null)} style={{ border: 'none', background: 'none', cursor: 'pointer', color: 'var(--accent)', fontWeight: 600, padding: 0, fontSize: 13 }}>All Projects</button>
+          <span style={{ color: 'var(--text3)' }}>›</span>
+          <span style={{ fontWeight: 600 }}>{projectMap[drillProject] || 'Project'}</span>
+        </div>
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(190px, 1fr))', gap: 10 }}>
+          {Object.entries(equips).map(([eid, fls]) => (
+            <div key={eid} onClick={() => setDrillEquip(eid)}
+              style={{ padding: 16, borderRadius: 10, border: '1px solid var(--border)', background: 'var(--surface)', cursor: 'pointer', transition: 'all 0.15s' }}
+              onMouseEnter={e => { e.currentTarget.style.borderColor = 'var(--accent)'; e.currentTarget.style.background = 'var(--accent-light, #e8f4ff)' }}
+              onMouseLeave={e => { e.currentTarget.style.borderColor = 'var(--border)'; e.currentTarget.style.background = 'var(--surface)' }}>
+              <div style={{ fontSize: 24, marginBottom: 6 }}>🔧</div>
+              <div style={{ fontWeight: 600, fontSize: 13 }}>{eid === '__none__' ? 'No Equipment' : (equipMap[eid] || 'Equipment')}</div>
+              <div style={{ fontSize: 11, color: 'var(--text3)', marginTop: 3 }}>{fls.length} file{fls.length !== 1 ? 's' : ''}</div>
+            </div>
+          ))}
+        </div>
+      </div>
+    )
+  }
+
+  // Level 1: project list
+  return (
+    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(190px, 1fr))', gap: 10 }}>
+      {Object.entries(byProject).map(([pid, equips]) => {
+        const total = Object.values(equips).reduce((s, arr) => s + arr.length, 0)
+        return (
+          <div key={pid} onClick={() => setDrillProject(pid)}
+            style={{ padding: 16, borderRadius: 10, border: '1px solid var(--border)', background: 'var(--surface)', cursor: 'pointer', transition: 'all 0.15s' }}
+            onMouseEnter={e => { e.currentTarget.style.borderColor = 'var(--accent)'; e.currentTarget.style.background = 'var(--accent-light, #e8f4ff)' }}
+            onMouseLeave={e => { e.currentTarget.style.borderColor = 'var(--border)'; e.currentTarget.style.background = 'var(--surface)' }}>
+            <div style={{ fontSize: 24, marginBottom: 6 }}>📁</div>
+            <div style={{ fontWeight: 600, fontSize: 13 }}>{projectMap[pid] || 'Unknown Project'}</div>
+            <div style={{ fontSize: 11, color: 'var(--text3)', marginTop: 3 }}>{total} file{total !== 1 ? 's' : ''} · {Object.keys(equips).length} equipment</div>
+          </div>
+        )
+      })}
+    </div>
+  )
+}
+
 // ── Workspace Tab (members / data analysis / links) ────────────
 function WorkspaceTab({ session, projects, isSolo, readOnly }) {
   const [wsTab, setWsTab] = useState('members')
@@ -1191,6 +1372,7 @@ function WorkspaceTab({ session, projects, isSolo, readOnly }) {
   const wsTabs = [
     { key: 'members',  label: '👥 Project Members' },
     { key: 'analysis', label: '📊 Data Analysis' },
+    { key: 'records',  label: '📂 Records' },
     { key: 'links',    label: '🔗 Links' },
   ]
 
@@ -1219,6 +1401,8 @@ function WorkspaceTab({ session, projects, isSolo, readOnly }) {
       )}
 
       {wsTab === 'analysis' && <DataAnalysis />}
+
+      {wsTab === 'records' && <RecordsPanel projects={projects} />}
 
       {wsTab === 'links' && (
         <LinksPanel projects={projects} readOnly={readOnly} />
