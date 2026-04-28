@@ -431,6 +431,8 @@ function ResultsTab({ projects, session }) {
   const [equipSearch, setEquipSearch] = useState('')
   const [selectedEquip, setSelectedEquip] = useState(null)
   const [showEquipPicker, setShowEquipPicker] = useState(false)
+  const [drillProject, setDrillProject] = useState(null) // project id
+  const [drillEquip,   setDrillEquip]   = useState(null) // equipment id
 
   useEffect(() => {
     sb.from('equipment_inventory').select('id, equipment_name, category').eq('is_active', true).order('category').order('equipment_name')
@@ -612,13 +614,13 @@ function ResultsTab({ projects, session }) {
         </div>
       )}
 
-      {/* Results list — grouped by project → equipment */}
+      {/* Drill-down results browser */}
       {loading ? (
         <div style={{ textAlign: 'center', padding: 32 }}><div className="spinner" style={{ margin: '0 auto' }} /></div>
       ) : results.length === 0 ? (
         <div className="empty-state"><div className="empty-icon">🧪</div><div>No results yet. Click "+ Add Result" to get started.</div></div>
       ) : (() => {
-        // build nested map: projectId → equipmentId → [results]
+        // build nested map
         const byProject = {}
         results.forEach(r => {
           const pid = r.project_id || '__none__'
@@ -627,72 +629,133 @@ function ResultsTab({ projects, session }) {
           if (!byProject[pid][eid]) byProject[pid][eid] = []
           byProject[pid][eid].push(r)
         })
-        const projectOrder = Object.keys(byProject).sort((a, b) => {
-          const na = projectMap[a] || 'zzz'
-          const nb = projectMap[b] || 'zzz'
-          return na.localeCompare(nb)
-        })
-        return (
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 20 }}>
-            {projectOrder.map(pid => {
-              const projectName = projectMap[pid] || 'No Project'
-              const equipIds    = Object.keys(byProject[pid]).sort((a, b) => (equipMap[a] || 'zzz').localeCompare(equipMap[b] || 'zzz'))
-              return (
-                <div key={pid}>
-                  {/* Project header */}
-                  <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 10 }}>
-                    <span style={{ fontSize: 13, fontWeight: 700, color: '#1a56db', background: '#e8f0fe', borderRadius: 8, padding: '4px 14px' }}>📁 {projectName}</span>
-                    <div style={{ flex: 1, height: 1, background: 'var(--border)' }} />
-                  </div>
 
-                  <div style={{ display: 'flex', flexDirection: 'column', gap: 14, paddingLeft: 12 }}>
-                    {equipIds.map(eid => {
-                      const equipName = equipMap[eid] || 'No Equipment'
-                      const rows = byProject[pid][eid]
-                      return (
-                        <div key={eid}>
-                          {/* Equipment sub-header */}
-                          <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 8 }}>
-                            <span style={{ fontSize: 12, fontWeight: 600, color: 'var(--text2)', background: 'var(--surface2)', borderRadius: 6, padding: '3px 12px' }}>🔧 {equipName}</span>
-                            <div style={{ flex: 1, height: 1, background: 'var(--border)', opacity: 0.5 }} />
-                            <span style={{ fontSize: 11, color: 'var(--text3)' }}>{rows.length} result{rows.length !== 1 ? 's' : ''}</span>
-                          </div>
-
-                          <div style={{ display: 'flex', flexDirection: 'column', gap: 8, paddingLeft: 10 }}>
-                            {rows.map(r => (
-                              <div key={r.id} className="card" style={{ padding: '12px 16px' }}>
-                                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 12, flexWrap: 'wrap' }}>
-                                  <div style={{ flex: 1, minWidth: 0 }}>
-                                    <div style={{ fontWeight: 700, fontSize: 14, marginBottom: 4 }}>{r.test_name || 'Untitled Test'}</div>
-                                    {r.specimen_name && <div style={{ fontSize: 12, color: 'var(--text2)', marginBottom: 6 }}>Specimen: <strong>{r.specimen_name}</strong></div>}
-                                    <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', marginBottom: 6 }}>
-                                      <span style={{ fontSize: 11, background: 'var(--surface2)', color: 'var(--text2)', borderRadius: 99, padding: '2px 9px', textTransform: 'capitalize' }}>
-                                        {RESULT_TYPES.find(t => t.value === r.result_type)?.label || r.result_type}
-                                      </span>
-                                    </div>
-                                    <div style={{ fontSize: 18, fontWeight: 700, color: r.result_value === 'Pass' ? '#2a6049' : r.result_value === 'Fail' ? '#c84b2f' : 'var(--accent)', marginBottom: 2 }}>
-                                      {formatResultValue(r.result_type, r.result_value)}
-                                    </div>
-                                    {r.explanation && <div style={{ fontSize: 13, color: 'var(--text2)', lineHeight: 1.5, marginTop: 4 }}>{r.explanation}</div>}
-                                    {r.created_by && <div style={{ fontSize: 11, color: 'var(--text3)', marginTop: 4 }}>by {r.created_by}</div>}
-                                  </div>
-                                  <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: 6, flexShrink: 0 }}>
-                                    <div style={{ fontSize: 12, color: 'var(--text3)', textAlign: 'right' }}>
-                                      {r.date && <div style={{ fontWeight: 600 }}>{r.date}</div>}
-                                      <div>{new Date(r.created_at).toLocaleDateString()}</div>
-                                    </div>
-                                    <div style={{ display: 'flex', gap: 6 }}>
-                                      <button onClick={() => openEdit(r)} className="btn btn-sm" style={{ fontSize: 12, padding: '3px 10px' }}>✏️ Edit</button>
-                                      <button onClick={() => deleteResult(r.id)} className="btn btn-sm" style={{ fontSize: 12, padding: '3px 10px', color: '#c84b2f' }}>🗑</button>
-                                    </div>
-                                  </div>
-                                </div>
-                              </div>
-                            ))}
-                          </div>
+        // ── Level 3: test list for a specific project + equipment ──
+        if (drillProject && drillEquip) {
+          const rows = (byProject[drillProject]?.[drillEquip] || []).slice().sort((a, b) => (a.date || '') < (b.date || '') ? 1 : -1)
+          const nums = rows.map(r => parseFloat(r.result_value)).filter(v => !isNaN(v))
+          const pfRows = rows.filter(r => r.result_type === 'pass_fail')
+          const avg = nums.length ? nums.reduce((a, b) => a + b, 0) / nums.length : null
+          const std = nums.length > 1 ? Math.sqrt(nums.reduce((s, v) => s + (v - avg) ** 2, 0) / nums.length) : null
+          const passRate = pfRows.length ? Math.round(pfRows.filter(r => r.result_value === 'Pass').length / pfRows.length * 100) : null
+          return (
+            <div>
+              {/* Breadcrumb */}
+              <div style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 13, marginBottom: 16, flexWrap: 'wrap' }}>
+                <button onClick={() => { setDrillProject(null); setDrillEquip(null) }} style={{ border: 'none', background: 'none', cursor: 'pointer', color: 'var(--accent)', fontWeight: 600, padding: 0, fontSize: 13 }}>All Projects</button>
+                <span style={{ color: 'var(--text3)' }}>›</span>
+                <button onClick={() => setDrillEquip(null)} style={{ border: 'none', background: 'none', cursor: 'pointer', color: 'var(--accent)', fontWeight: 600, padding: 0, fontSize: 13 }}>{projectMap[drillProject] || 'Project'}</button>
+                <span style={{ color: 'var(--text3)' }}>›</span>
+                <span style={{ fontWeight: 700, color: 'var(--text)' }}>{equipMap[drillEquip] || 'Equipment'}</span>
+              </div>
+              {/* Summary stats */}
+              {(avg !== null || passRate !== null) && (
+                <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap', marginBottom: 16 }}>
+                  {[
+                    { label: 'Tests', value: rows.length, color: 'var(--accent)' },
+                    avg !== null && { label: 'Average', value: avg.toFixed(2), color: '#0369a1' },
+                    std !== null && { label: 'Std Dev', value: std.toFixed(2), color: '#7c4dbd' },
+                    passRate !== null && { label: 'Pass Rate', value: passRate + '%', color: passRate >= 80 ? '#2a6049' : '#c84b2f' },
+                  ].filter(Boolean).map(s => (
+                    <div key={s.label} style={{ background: 'var(--surface)', border: '1px solid var(--border)', borderRadius: 10, padding: '10px 18px', textAlign: 'center', minWidth: 90 }}>
+                      <div style={{ fontSize: 20, fontWeight: 700, color: s.color }}>{s.value}</div>
+                      <div style={{ fontSize: 11, color: 'var(--text3)', marginTop: 2 }}>{s.label}</div>
+                    </div>
+                  ))}
+                </div>
+              )}
+              {/* Result cards */}
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+                {rows.map(r => (
+                  <div key={r.id} className="card" style={{ padding: '12px 16px' }}>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 12, flexWrap: 'wrap' }}>
+                      <div style={{ flex: 1, minWidth: 0 }}>
+                        <div style={{ fontWeight: 700, fontSize: 14, marginBottom: 3 }}>{r.test_name || 'Untitled Test'}</div>
+                        {r.specimen_name && <div style={{ fontSize: 12, color: 'var(--text2)', marginBottom: 5 }}>Specimen: <strong>{r.specimen_name}</strong></div>}
+                        <span style={{ fontSize: 11, background: 'var(--surface2)', color: 'var(--text2)', borderRadius: 99, padding: '2px 9px' }}>
+                          {RESULT_TYPES.find(t => t.value === r.result_type)?.label || r.result_type}
+                        </span>
+                        <div style={{ fontSize: 20, fontWeight: 700, color: r.result_value === 'Pass' ? '#2a6049' : r.result_value === 'Fail' ? '#c84b2f' : 'var(--accent)', margin: '6px 0 2px' }}>
+                          {formatResultValue(r.result_type, r.result_value)}
                         </div>
-                      )
-                    })}
+                        {r.explanation && <div style={{ fontSize: 13, color: 'var(--text2)', lineHeight: 1.5, marginTop: 4 }}>{r.explanation}</div>}
+                        {r.created_by && <div style={{ fontSize: 11, color: 'var(--text3)', marginTop: 4 }}>by {r.created_by}</div>}
+                      </div>
+                      <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: 6, flexShrink: 0 }}>
+                        <div style={{ fontSize: 12, color: 'var(--text3)', textAlign: 'right' }}>
+                          {r.date && <div style={{ fontWeight: 600 }}>{r.date}</div>}
+                          <div>{new Date(r.created_at).toLocaleDateString()}</div>
+                        </div>
+                        <div style={{ display: 'flex', gap: 6 }}>
+                          <button onClick={() => openEdit(r)} className="btn btn-sm" style={{ fontSize: 12, padding: '3px 10px' }}>✏️ Edit</button>
+                          <button onClick={() => deleteResult(r.id)} className="btn btn-sm" style={{ fontSize: 12, padding: '3px 10px', color: '#c84b2f' }}>🗑</button>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )
+        }
+
+        // ── Level 2: equipment icons for a project ──
+        if (drillProject) {
+          const equipIds = Object.keys(byProject[drillProject] || {}).sort((a, b) => (equipMap[a] || 'zzz').localeCompare(equipMap[b] || 'zzz'))
+          return (
+            <div>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 13, marginBottom: 16 }}>
+                <button onClick={() => setDrillProject(null)} style={{ border: 'none', background: 'none', cursor: 'pointer', color: 'var(--accent)', fontWeight: 600, padding: 0, fontSize: 13 }}>All Projects</button>
+                <span style={{ color: 'var(--text3)' }}>›</span>
+                <span style={{ fontWeight: 700, color: 'var(--text)' }}>{projectMap[drillProject] || 'Project'}</span>
+              </div>
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(160px, 1fr))', gap: 12 }}>
+                {equipIds.map(eid => {
+                  const rows   = byProject[drillProject][eid]
+                  const nums   = rows.map(r => parseFloat(r.result_value)).filter(v => !isNaN(v))
+                  const pf     = rows.filter(r => r.result_type === 'pass_fail')
+                  const avg    = nums.length ? nums.reduce((a, b) => a + b, 0) / nums.length : null
+                  const pr     = pf.length ? Math.round(pf.filter(r => r.result_value === 'Pass').length / pf.length * 100) : null
+                  return (
+                    <div key={eid} onClick={() => setDrillEquip(eid)}
+                      style={{ background: 'var(--surface)', border: '1px solid var(--border)', borderRadius: 14, padding: '18px 16px', cursor: 'pointer', textAlign: 'center', transition: 'all 0.15s' }}
+                      onMouseEnter={e => { e.currentTarget.style.borderColor = 'var(--accent)'; e.currentTarget.style.boxShadow = '0 4px 16px rgba(0,0,0,0.08)' }}
+                      onMouseLeave={e => { e.currentTarget.style.borderColor = 'var(--border)'; e.currentTarget.style.boxShadow = 'none' }}>
+                      <div style={{ fontSize: 32, marginBottom: 8 }}>🔧</div>
+                      <div style={{ fontWeight: 700, fontSize: 13, lineHeight: 1.3, marginBottom: 8 }}>{equipMap[eid] || 'Unknown Equipment'}</div>
+                      <div style={{ fontSize: 12, color: 'var(--text3)', marginBottom: 6 }}>{rows.length} test{rows.length !== 1 ? 's' : ''}</div>
+                      {avg !== null && <div style={{ fontSize: 12, fontWeight: 600, color: '#0369a1' }}>avg {avg.toFixed(2)}</div>}
+                      {pr !== null && <div style={{ fontSize: 12, fontWeight: 600, color: pr >= 80 ? '#2a6049' : '#c84b2f' }}>{pr}% pass</div>}
+                    </div>
+                  )
+                })}
+              </div>
+            </div>
+          )
+        }
+
+        // ── Level 1: project icons ──
+        const projectIds = Object.keys(byProject).sort((a, b) => (projectMap[a] || 'zzz').localeCompare(projectMap[b] || 'zzz'))
+        return (
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(170px, 1fr))', gap: 14 }}>
+            {projectIds.map(pid => {
+              const allRows  = Object.values(byProject[pid]).flat()
+              const equipCnt = Object.keys(byProject[pid]).length
+              const nums     = allRows.map(r => parseFloat(r.result_value)).filter(v => !isNaN(v))
+              const pf       = allRows.filter(r => r.result_type === 'pass_fail')
+              const pr       = pf.length ? Math.round(pf.filter(r => r.result_value === 'Pass').length / pf.length * 100) : null
+              const latest   = allRows.map(r => r.date).filter(Boolean).sort().reverse()[0]
+              return (
+                <div key={pid} onClick={() => setDrillProject(pid)}
+                  style={{ background: 'var(--surface)', border: '2px solid var(--border)', borderRadius: 16, padding: '22px 18px', cursor: 'pointer', textAlign: 'center', transition: 'all 0.15s' }}
+                  onMouseEnter={e => { e.currentTarget.style.borderColor = '#1a56db'; e.currentTarget.style.boxShadow = '0 6px 20px rgba(26,86,219,0.12)' }}
+                  onMouseLeave={e => { e.currentTarget.style.borderColor = 'var(--border)'; e.currentTarget.style.boxShadow = 'none' }}>
+                  <div style={{ fontSize: 38, marginBottom: 10 }}>📁</div>
+                  <div style={{ fontWeight: 700, fontSize: 14, lineHeight: 1.3, marginBottom: 10, color: 'var(--text)' }}>{projectMap[pid] || 'No Project'}</div>
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+                    <div style={{ fontSize: 12, color: 'var(--text3)' }}>{equipCnt} equipment · {allRows.length} tests</div>
+                    {pr !== null && <div style={{ fontSize: 12, fontWeight: 600, color: pr >= 80 ? '#2a6049' : '#c84b2f' }}>{pr}% pass rate</div>}
+                    {latest && <div style={{ fontSize: 11, color: 'var(--text3)' }}>Latest: {latest}</div>}
                   </div>
                 </div>
               )
