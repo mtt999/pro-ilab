@@ -666,129 +666,155 @@ function ResultsTab({ projects, session }) {
 // ── Point Chart ───────────────────────────────────────────────
 const PALETTE = ['#0d47a1','#c84b2f','#2a6049','#7c4dbd','#b45309','#0369a1','#be185d','#065f46']
 function PointChart({ results, isOutlier }) {
-  const numeric  = results.filter(r => ['number','percentage','temperature','ratio'].includes(r.result_type))
-  const passFail = results.filter(r => r.result_type === 'pass_fail')
-  if (!numeric.length && !passFail.length) return null
+  if (!results.length) return null
 
-  const W = 560, H = 180
-  const pad = { t: 20, r: 20, b: 44, l: 48 }
+  const W = 560, H = 200
+  const pad = { t: 24, r: 20, b: 52, l: 50 }
   const cW = W - pad.l - pad.r
   const cH = H - pad.t - pad.b
 
-  // collect all entries sorted by date then by sequence
-  const sorted = [...results].sort((a, b) => (a.date || '') < (b.date || '') ? -1 : 1)
-  const names  = [...new Set(sorted.map(r => r.test_name || r.sample_name || 'Result'))]
-  const colorOf = n => PALETTE[names.indexOf(n) % PALETTE.length]
+  const getSpecimen = r => r.specimen_name || r.test_name || r.sample_name || 'Unknown'
+  const specimens   = [...new Set(results.map(getSpecimen))]
+  const xOf = sp => pad.l + (specimens.length <= 1 ? cW / 2 : (specimens.indexOf(sp) / (specimens.length - 1)) * cW)
 
-  // separate numeric and pass/fail for dual-axis layout
-  const numSorted = sorted.filter(r => ['number','percentage','temperature','ratio'].includes(r.result_type))
-  const vals = numSorted.map(r => parseFloat(r.result_value)).filter(v => !isNaN(v))
-  const rawMin = vals.length ? Math.min(...vals) : 0
-  const rawMax = vals.length ? Math.max(...vals) : 1
-  const pad5   = (rawMax - rawMin) * 0.1 || 0.5
-  const yMin   = rawMin - pad5
-  const yMax   = rawMax + pad5
+  // numeric values for Y scale
+  const NUMERIC_TYPES = ['number','percentage','temperature','ratio']
+  const numericVals = results.filter(r => NUMERIC_TYPES.includes(r.result_type)).map(r => parseFloat(r.result_value)).filter(v => !isNaN(v))
 
-  const allSorted = [...sorted]
-  const toX = i => pad.l + (allSorted.length <= 1 ? cW / 2 : (i / (allSorted.length - 1)) * cW)
+  // per-specimen stddev stats
+  const specimenStats = {}
+  specimens.forEach(sp => {
+    const spVals = results
+      .filter(r => getSpecimen(r) === sp && NUMERIC_TYPES.includes(r.result_type))
+      .map(r => parseFloat(r.result_value)).filter(v => !isNaN(v))
+    if (spVals.length >= 2) {
+      const mean = spVals.reduce((a, b) => a + b, 0) / spVals.length
+      const std  = Math.sqrt(spVals.reduce((s, v) => s + (v - mean) ** 2, 0) / spVals.length)
+      specimenStats[sp] = { mean, std }
+    }
+  })
+
+  // Y range — extend to fit error bars
+  const allY = [
+    ...numericVals,
+    ...Object.values(specimenStats).flatMap(s => [s.mean + s.std, s.mean - s.std]),
+  ]
+  const rawMin = allY.length ? Math.min(...allY) : 0
+  const rawMax = allY.length ? Math.max(...allY) : 1
+  const padY   = (rawMax - rawMin) * 0.12 || 0.5
+  const yMin   = rawMin - padY
+  const yMax   = rawMax + padY
   const toY = v => pad.t + ((yMax - v) / (yMax - yMin)) * cH
 
-  // Y-axis ticks (5 ticks)
   const ticks = 4
   const tickVals = Array.from({ length: ticks + 1 }, (_, i) => yMin + (i / ticks) * (yMax - yMin))
 
-  // build points
-  const pts = allSorted.map((r, i) => {
-    const name  = r.test_name || r.sample_name || 'Result'
-    const color = colorOf(name)
-    if (r.result_type === 'pass_fail') {
-      return { x: toX(i), y: r.result_value === 'Pass' ? pad.t + cH * 0.15 : pad.t + cH * 0.85,
-               color: r.result_value === 'Pass' ? '#2a6049' : '#c84b2f',
-               shape: 'diamond', label: `${r.date} · ${name}: ${r.result_value}`, outlier: false }
-    }
-    const v = parseFloat(r.result_value)
-    return { x: toX(i), y: isNaN(v) ? null : toY(v),
-             color: isOutlier(r.result_value) ? '#c84b2f' : color,
-             shape: 'circle', label: `${r.date} · ${name}: ${r.result_value}${r.result_type === 'percentage' ? '%' : ''}`,
-             outlier: isOutlier(r.result_value) }
-  }).filter(p => p.y !== null)
+  const testNames = [...new Set(results.map(r => r.test_name || r.sample_name || 'Result'))]
+  const colorOf   = n => PALETTE[testNames.indexOf(n) % PALETTE.length]
 
-  // lines per sample name (numeric only)
-  const lineGroups = names.map(n => {
-    const grouped = pts.filter((p, i) => {
-      const r = allSorted[pts.indexOf ? i : 0]
-      return p.shape === 'circle'
-    })
-    // re-filter by name using original data
-    const namePts = allSorted
-      .map((r, i) => ({ r, i }))
-      .filter(({ r }) => (r.test_name || r.sample_name || 'Result') === n && ['number','percentage','temperature','ratio'].includes(r.result_type))
-      .map(({ r, i }) => ({ x: toX(i), y: toY(parseFloat(r.result_value)) }))
-      .filter(p => !isNaN(p.y))
-    if (namePts.length < 2) return null
-    const d = namePts.map((p, idx) => `${idx === 0 ? 'M' : 'L'}${p.x},${p.y}`).join(' ')
-    return { d, color: colorOf(n), n }
-  }).filter(Boolean)
+  const hasStdDev  = Object.keys(specimenStats).length > 0
+  const hasPassFail = results.some(r => r.result_type === 'pass_fail')
 
   return (
     <div style={{ background: 'var(--surface)', border: '1px solid var(--border)', borderRadius: 'var(--radius-lg)', padding: '16px 20px' }}>
-      <div style={{ fontWeight: 600, fontSize: 13, marginBottom: 8 }}>Results by Sample</div>
+      <div style={{ fontWeight: 600, fontSize: 13, marginBottom: 8 }}>Results by Specimen</div>
       <svg viewBox={`0 0 ${W} ${H}`} style={{ width: '100%', height: 'auto', overflow: 'visible', display: 'block' }}>
-        {/* Grid */}
+        {/* Gridlines + Y-axis ticks */}
         {tickVals.map((v, i) => (
           <g key={i}>
             <line x1={pad.l} y1={toY(v)} x2={W - pad.r} y2={toY(v)} stroke="var(--border)" strokeWidth={0.8} strokeDasharray="3 3" />
             <text x={pad.l - 5} y={toY(v)} textAnchor="end" dominantBaseline="middle" fontSize={9} fill="var(--text3)">
-              {Number.isInteger(v) ? v : v.toFixed(1)}
+              {Math.abs(v) < 100 ? (v % 1 === 0 ? v : v.toFixed(1)) : Math.round(v)}
             </text>
           </g>
         ))}
         {/* Axes */}
-        <line x1={pad.l} y1={pad.t} x2={pad.l} y2={H - pad.b} stroke="var(--border)" strokeWidth={1} />
-        <line x1={pad.l} y1={H - pad.b} x2={W - pad.r} y2={H - pad.b} stroke="var(--border)" strokeWidth={1} />
-        {/* Lines per sample */}
-        {lineGroups.map((lg, i) => (
-          <path key={i} d={lg.d} fill="none" stroke={lg.color} strokeWidth={1.5} strokeOpacity={0.35} />
-        ))}
-        {/* Points */}
-        {pts.map((p, i) => (
-          p.shape === 'diamond'
-            ? <polygon key={i} points={`${p.x},${p.y - 5} ${p.x + 5},${p.y} ${p.x},${p.y + 5} ${p.x - 5},${p.y}`}
-                fill={p.color} stroke="white" strokeWidth={1.2} style={{ cursor: 'default' }}>
-                <title>{p.label}</title>
+        <line x1={pad.l} y1={pad.t} x2={pad.l} y2={H - pad.b} stroke="var(--text3)" strokeWidth={1} />
+        <line x1={pad.l} y1={H - pad.b} x2={W - pad.r} y2={H - pad.b} stroke="var(--text3)" strokeWidth={1} />
+
+        {/* Std-dev error bars (drawn before points so points sit on top) */}
+        {Object.entries(specimenStats).map(([sp, s]) => {
+          const x     = xOf(sp)
+          const yMean = toY(s.mean)
+          const yHi   = toY(s.mean + s.std)
+          const yLo   = toY(s.mean - s.std)
+          return (
+            <g key={sp}>
+              <line x1={x} y1={yHi} x2={x} y2={yLo} stroke="#0d47a1" strokeWidth={2.5} strokeOpacity={0.35} />
+              <line x1={x - 6} y1={yHi} x2={x + 6} y2={yHi} stroke="#0d47a1" strokeWidth={1.5} strokeOpacity={0.5} />
+              <line x1={x - 6} y1={yLo} x2={x + 6} y2={yLo} stroke="#0d47a1" strokeWidth={1.5} strokeOpacity={0.5} />
+              <line x1={x - 8} y1={yMean} x2={x + 8} y2={yMean} stroke="#0d47a1" strokeWidth={2.5} strokeOpacity={0.75}>
+                <title>{sp} mean={s.mean.toFixed(3)}, σ={s.std.toFixed(3)}</title>
+              </line>
+            </g>
+          )
+        })}
+
+        {/* Data points */}
+        {results.map((r, i) => {
+          const sp    = getSpecimen(r)
+          const x     = xOf(sp)
+          const tname = r.test_name || r.sample_name || 'Result'
+          const color = colorOf(tname)
+
+          if (r.result_type === 'pass_fail') {
+            const y = r.result_value === 'Pass' ? pad.t + cH * 0.12 : pad.t + cH * 0.88
+            return (
+              <polygon key={i} points={`${x},${y-5} ${x+5},${y} ${x},${y+5} ${x-5},${y}`}
+                fill={r.result_value === 'Pass' ? '#2a6049' : '#c84b2f'} stroke="white" strokeWidth={1.2}>
+                <title>{sp}: {r.result_value} ({r.date})</title>
               </polygon>
-            : <circle key={i} cx={p.x} cy={p.y} r={p.outlier ? 5.5 : 4.5}
-                fill={p.color} stroke="white" strokeWidth={1.5} style={{ cursor: 'default' }}>
-                <title>{p.label}{p.outlier ? ' ⚠️ outlier' : ''}</title>
-              </circle>
-        ))}
-        {/* X labels */}
-        {allSorted.map((r, i) => (
-          <text key={i} x={toX(i)} y={H - pad.b + 12} textAnchor="middle" fontSize={8.5} fill="var(--text3)"
-            transform={allSorted.length > 8 ? `rotate(-35,${toX(i)},${H - pad.b + 12})` : ''}>
-            {r.date ? r.date.slice(5) : i + 1}
+            )
+          }
+          const v = parseFloat(r.result_value)
+          if (isNaN(v)) return null
+          const y       = toY(v)
+          const outlier = isOutlier(r.result_value)
+          return (
+            <circle key={i} cx={x} cy={y} r={outlier ? 5.5 : 4.5}
+              fill={outlier ? '#c84b2f' : color} stroke="white" strokeWidth={1.5}>
+              <title>{sp}: {r.result_value}{r.result_type === 'percentage' ? '%' : ''} ({r.date}){outlier ? ' ⚠️ outlier' : ''}</title>
+            </circle>
+          )
+        })}
+
+        {/* X-axis specimen labels */}
+        {specimens.map((sp, i) => (
+          <text key={i} x={xOf(sp)} y={H - pad.b + 13} textAnchor="middle" fontSize={9} fill="var(--text2)"
+            transform={specimens.length > 5 ? `rotate(-32,${xOf(sp)},${H - pad.b + 13})` : ''}>
+            {sp.length > 12 ? sp.slice(0, 11) + '…' : sp}
           </text>
         ))}
       </svg>
+
       {/* Legend */}
-      {names.length > 1 && (
-        <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px 14px', marginTop: 6 }}>
-          {names.map(n => (
-            <span key={n} style={{ fontSize: 11, color: 'var(--text2)', display: 'flex', alignItems: 'center', gap: 5 }}>
-              <span style={{ width: 9, height: 9, borderRadius: '50%', background: colorOf(n), display: 'inline-block' }} />{n}
-            </span>
-          ))}
-          {passFail.length > 0 && <>
-            <span style={{ fontSize: 11, color: 'var(--text2)', display: 'flex', alignItems: 'center', gap: 5 }}>
-              <span style={{ width: 9, height: 9, background: '#2a6049', display: 'inline-block', clipPath: 'polygon(50% 0%,100% 50%,50% 100%,0% 50%)' }} />Pass
-            </span>
-            <span style={{ fontSize: 11, color: 'var(--text2)', display: 'flex', alignItems: 'center', gap: 5 }}>
-              <span style={{ width: 9, height: 9, background: '#c84b2f', display: 'inline-block', clipPath: 'polygon(50% 0%,100% 50%,50% 100%,0% 50%)' }} />Fail
-            </span>
-          </>}
-        </div>
-      )}
-      <div style={{ fontSize: 10, color: 'var(--text3)', marginTop: 6 }}>● Numeric · ◆ Pass/Fail · Red = outlier (&gt;2σ) · Hover for details</div>
+      <div style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: '6px 16px', marginTop: 8 }}>
+        {testNames.map(n => (
+          <span key={n} style={{ fontSize: 11, color: 'var(--text2)', display: 'flex', alignItems: 'center', gap: 5 }}>
+            <span style={{ width: 9, height: 9, borderRadius: '50%', background: colorOf(n), display: 'inline-block' }} />{n}
+          </span>
+        ))}
+        {hasPassFail && <>
+          <span style={{ fontSize: 11, color: 'var(--text2)', display: 'flex', alignItems: 'center', gap: 5 }}>
+            <span style={{ width: 9, height: 9, background: '#2a6049', display: 'inline-block', clipPath: 'polygon(50% 0%,100% 50%,50% 100%,0% 50%)' }} />Pass
+          </span>
+          <span style={{ fontSize: 11, color: 'var(--text2)', display: 'flex', alignItems: 'center', gap: 5 }}>
+            <span style={{ width: 9, height: 9, background: '#c84b2f', display: 'inline-block', clipPath: 'polygon(50% 0%,100% 50%,50% 100%,0% 50%)' }} />Fail
+          </span>
+        </>}
+        {hasStdDev && (
+          <span style={{ fontSize: 11, color: '#0d47a1', display: 'flex', alignItems: 'center', gap: 5 }}>
+            <svg width={14} height={14} style={{ flexShrink: 0 }}>
+              <line x1={7} y1={1} x2={7} y2={13} stroke="#0d47a1" strokeWidth={2} strokeOpacity={0.5} />
+              <line x1={3} y1={1} x2={11} y2={1} stroke="#0d47a1" strokeWidth={1.5} strokeOpacity={0.5} />
+              <line x1={3} y1={13} x2={11} y2={13} stroke="#0d47a1" strokeWidth={1.5} strokeOpacity={0.5} />
+              <line x1={2} y1={7} x2={12} y2={7} stroke="#0d47a1" strokeWidth={2.5} strokeOpacity={0.8} />
+            </svg>
+            Std dev (≥2 results)
+          </span>
+        )}
+      </div>
+      <div style={{ fontSize: 10, color: 'var(--text3)', marginTop: 4 }}>● Numeric · ◆ Pass/Fail · Red = outlier (&gt;2σ) · Hover points for details</div>
     </div>
   )
 }
