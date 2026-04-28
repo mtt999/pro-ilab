@@ -436,7 +436,7 @@ function AdminProfile() {
         ))}
       </div>
       {adminTab === 'admin'     && <AdminSettings session={session} toast={toast} />}
-      {adminTab === 'students'  && <StudentsPanel toast={toast} />}
+      {adminTab === 'students'  && <StudentsPanel toast={toast} session={session} />}
       {adminTab === 'staff'     && <StaffPanel toast={toast} />}
       {adminTab === 'icons'     && <IconImageManager toast={toast} />}
       {adminTab === 'dashboard' && <DashboardIconsPanel session={session} />}
@@ -477,7 +477,7 @@ function AdminSettings({ session, toast }) {
 }
 
 // ── STUDENTS PANEL ── with 🎛️ icon button per student
-function StudentsPanel({ toast }) {
+function StudentsPanel({ toast, session }) {
   const [students, setStudents] = useState([])
   const [loading, setLoading] = useState(true)
   const [search, setSearch] = useState('')
@@ -486,6 +486,7 @@ function StudentsPanel({ toast }) {
   const [iconStudent, setIconStudent] = useState(null)
   const [importPreview, setImportPreview] = useState(null)
   const [importing, setImporting] = useState(false)
+  const [revealedId, setRevealedId] = useState(null)
   const fileRef = useRef(null)
 
   useEffect(() => { load() }, [])
@@ -594,7 +595,16 @@ function StudentsPanel({ toast }) {
                 </div>
                 <div style={{ fontSize: 12, color: 'var(--text3)', fontFamily: 'var(--mono)', display: 'flex', gap: 10, flexWrap: 'wrap', marginTop: 3 }}>
                   {sEmail(s) && <span>📧 {sEmail(s)}</span>}
-                  {s.password && <span>🔑 {s.password}</span>}
+                  {s.password && (() => {
+                    const isOwn = session?.userId === s.id || session?.username === s.email || session?.username === sEmail(s)
+                    if (!isOwn) return <span style={{ fontSize: 11, color: 'var(--text3)' }}>🔑 ••••••••</span>
+                    const revealed = revealedId === s.id
+                    return (
+                      <span style={{ cursor: 'pointer', userSelect: 'none' }} onClick={() => setRevealedId(revealed ? null : s.id)} title={revealed ? 'Hide password' : 'Click to reveal your password'}>
+                        🔑 {revealed ? s.password : '••••••••'} <span style={{ fontSize: 10, color: 'var(--accent)' }}>{revealed ? '🙈 hide' : '👁 show'}</span>
+                      </span>
+                    )
+                  })()}
                   {s.project_group && <span>{s.project_group}</span>}
                 </div>
               </div>
@@ -630,8 +640,7 @@ function StudentModal({ student, onClose, onSave }) {
         <div className="field"><label>Email Address</label><input type="email" value={form.emailAddr} onChange={e=>setForm(f=>({...f,emailAddr:e.target.value}))} placeholder="netid@illinois.edu" /></div>
         <div className="field">
           <label>Password{student ? ' (leave blank to keep current)' : ' *'}</label>
-          <input type="text" value={form.password} onChange={e=>setForm(f=>({...f,password:e.target.value}))} placeholder={student ? 'Type new password to change' : 'Min. 6 chars'} />
-          {student && <div style={{ fontSize: 11, color: 'var(--text3)', marginTop: 4 }}>Current: {student.password || '—'} · Leave blank to keep unchanged</div>}
+          <input type="text" value={form.password} onChange={e=>setForm(f=>({...f,password:e.target.value}))} placeholder={student ? 'Leave blank to keep unchanged' : 'Min. 6 chars'} />
         </div>
         <div className="grid-2">
           <div className="field"><label>Supervisor</label><input value={form.supervisor} onChange={e=>setForm(f=>({...f,supervisor:e.target.value}))} placeholder="e.g. Prof. Imad Al-Qadi" /></div>
@@ -874,7 +883,7 @@ function StaffProfile({ session }) {
         ))}
       </div>
       {activeTab === 'info'      && <UserProfileForm session={session} toast={toast} />}
-      {activeTab === 'students'  && <StudentsPanel toast={toast} />}
+      {activeTab === 'students'  && <StudentsPanel toast={toast} session={session} />}
       {activeTab === 'staff'     && <StaffListPanel toast={toast} session={session} />}
       {activeTab === 'dashboard' && <StaffStudentIconManager />}
       {activeTab === 'notifs'    && <NotificationPrefsPanel userId={session?.userId} role="user" />}
