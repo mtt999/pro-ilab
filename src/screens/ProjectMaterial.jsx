@@ -472,7 +472,9 @@ function ResultsTab({ projects, session }) {
     if (form.result_value === '') { toast('Enter a result value.'); return }
     setSaving(true)
     const payload = {
-      test_name: form.test_name.trim(), project_id: form.project_id,
+      test_name: form.test_name.trim(),
+      sample_name: form.test_name.trim(),
+      project_id: form.project_id,
       equipment_id: form.equipment_id, result_type: form.result_type,
       result_value: String(form.result_value),
       explanation: form.description.trim() || null,
