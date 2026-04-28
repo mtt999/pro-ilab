@@ -10,6 +10,7 @@ import Home from './screens/Home'
 import Inspection from './screens/Inspection'
 import Results from './screens/Results'
 import Projects from './screens/Projects'
+import ProjectMaterial from './screens/ProjectMaterial'
 import ProjectDetail from './screens/ProjectDetail'
 import History from './screens/History'
 import TrainingRecords from './screens/TrainingRecords'
@@ -115,7 +116,7 @@ export default function App() {
     home: <Home />,
     inspection: <Inspection />,
     results: <Results />,
-    projects: <Projects />,
+    projects: <ProjectMaterial />,
     'project-detail': <ProjectDetail />,
     history: <History />,
     training: <TrainingRecords />,

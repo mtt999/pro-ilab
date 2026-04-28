@@ -4,6 +4,7 @@ import { sb } from '../lib/supabase'
 import { useState, useEffect, useRef } from 'react'
 import DashboardIconPicker, { ALL_MODULES_META, PINNED_MODULES } from '../components/DashboardIconPicker'
 import StudentIconManager from '../components/StudentIconManager'
+import TeammatesPanel from '../components/TeammatesPanel'
 
 const PROJECT_GROUPS = ['Material', 'Sustainability', 'GPR', 'Mechanic', 'Other']
 const DEGREES = ['MS', 'PhD', 'BS', 'Other']
@@ -17,6 +18,10 @@ const sFirstName  = s => s?.email  || ''
 const sLastName   = s => s?.name   || ''
 const sEmail      = s => s?.phone  || ''
 const sSupervisor = s => s?.degree || s?.supervisor || ''
+
+// ══════════════════════════════════════════════════════════════
+// [TeammatesPanel imported from components/TeammatesPanel.jsx]
+// ══════════════════════════════════════════════════════════════
 
 // ══════════════════════════════════════════════════════════════
 // SOLO PROFILE — reads from solo_users table
@@ -146,6 +151,8 @@ function SoloProfile({ session }) {
           <button className="btn btn-primary" onClick={saveInfo} disabled={saving}>{saving ? 'Saving…' : 'Save changes'}</button>
         </div>
       )}
+
+      {activeTab === 'teammates' && <TeammatesPanel session={session} />}
 
       {activeTab === 'dashboard' && <DashboardIconsPanel session={session} />}
 

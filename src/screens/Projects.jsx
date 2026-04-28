@@ -461,7 +461,7 @@ function ProjectInfo({ project, users, onSaved }) {
   )
 }
 
-function NewProjectModal({ users, onClose, onCreated }) {
+function NewProjectModal({ users, onClose, onCreated, soloOwnerId }) {
   const { toast } = useAppStore()
   const [form, setForm] = useState({ name: '', project_id: '', cfop: '', status: 'active', pi_user_id: '', student_ids: [], sampling_date: '', storage_date: '', notes: '' })
 
@@ -472,7 +472,7 @@ function NewProjectModal({ users, onClose, onCreated }) {
   async function create() {
     if (!form.name.trim()) { toast('Project name is required.'); return }
     if (!form.project_id.trim()) { toast('Project title is required.'); return }
-    const payload = { name: form.name.trim(), project_id: form.project_id.trim(), cfop: form.cfop.trim() || null, status: form.status, pi_user_id: form.pi_user_id || null, student_ids: form.student_ids, sampling_date: form.sampling_date || null, storage_date: form.storage_date || null, notes: form.notes.trim() || null }
+    const payload = { name: form.name.trim(), project_id: form.project_id.trim(), cfop: form.cfop.trim() || null, status: form.status, pi_user_id: form.pi_user_id || null, student_ids: form.student_ids, sampling_date: form.sampling_date || null, storage_date: form.storage_date || null, notes: form.notes.trim() || null, solo_owner_id: soloOwnerId || null }
     const { data, error } = await sb.from('projects').insert(payload).select().single()
     if (error) { toast('Error creating project.'); return }
     toast('Project created!'); onCreated(data.id); onClose()
@@ -538,15 +538,36 @@ export default function Projects() {
   const [activeProject, setActiveProject] = useState(null)
   const [subTab, setSubTab] = useState('info')
 
-  useEffect(() => { loadProjects() }, [filter])
+  useEffect(() => { loadProjects() }, [filter, viewingWorkspaceOwnerId])
   useEffect(() => { loadUsers() }, [])
   useEffect(() => { if (activeProjectId) loadActiveProject() }, [activeProjectId])
 
   async function loadProjects() {
     setLoading(true)
-    let q = sb.from('projects').select('id, name, project_id, status, cfop, pi_user_id, student_ids, sampling_date, notes').order('created_at', { ascending: false })
+
+    const baseSelect = 'id, name, project_id, status, cfop, pi_user_id, student_ids, sampling_date, notes'
+
+    let q = sb.from('projects').select(baseSelect).order('created_at', { ascending: false })
+
+    if (isSolo && session?.userId) {
+      if (viewingWorkspaceOwnerId) {
+        q = q.eq('solo_owner_id', viewingWorkspaceOwnerId)
+      } else {
+        q = q.or(`solo_owner_id.eq.${session.userId},solo_owner_id.is.null`)
+      }
+    }
+
     if (filter !== 'all') q = q.eq('status', filter)
-    const { data } = await q
+    let { data, error } = await q
+
+    // solo_owner_id column doesn't exist yet (SQL migration not run) — fall back to all projects
+    if (error && isSolo) {
+      let fallback = sb.from('projects').select(baseSelect).order('created_at', { ascending: false })
+      if (filter !== 'all') fallback = fallback.eq('status', filter)
+      const { data: fd } = await fallback
+      data = fd
+    }
+
     setAllProjects(data || [])
     setProjects(data || [])
     setLoading(false)
@@ -639,6 +660,11 @@ export default function Projects() {
                       </div>
                       <span className={`badge ${statusBadge(p.status)}`} style={{ fontSize: 10, flexShrink: 0, padding: '2px 8px' }}>{p.status}</span>
                     </div>
+                    {viewingShared && (
+                      <div style={{ marginTop: 4, display: 'inline-block', fontSize: 11, fontWeight: 600, background: '#EEEDFE', color: '#534AB7', borderRadius: 99, padding: '2px 8px' }}>
+                        {viewingOwnerName}'s workspace
+                      </div>
+                    )}
                   </div>
                 )
               })}

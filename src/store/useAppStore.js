@@ -5,11 +5,21 @@ export const useAppStore = create((set, get) => ({
   // ── Auth ──
   session: null,
   setSession: (s) => set({ session: s }),
-  clearSession: () => set({ session: null }),
+  clearSession: () => set({ session: null, sharedWorkspaces: [], viewingWorkspaceOwnerId: null, activeModules: null }),
+
+  // ── Active dashboard modules (icon picker) ──
+  activeModules: null,
+  setActiveModules: (modules) => set({ activeModules: modules }),
 
   // ── Login mode: 'team' | 'solo' | null ──
   loginMode: null,
   setLoginMode: (m) => set({ loginMode: m }),
+
+  // ── Solo workspace sharing ──
+  sharedWorkspaces: [],          // [{ ownerId, ownerName }] — workspaces the current solo user is a member of
+  setSharedWorkspaces: (ws) => set({ sharedWorkspaces: ws }),
+  viewingWorkspaceOwnerId: null, // null = own workspace, uuid = viewing that owner's workspace
+  setViewingWorkspaceOwnerId: (id) => set({ viewingWorkspaceOwnerId: id }),
 
   // ── Cache ──
   rooms: [],
