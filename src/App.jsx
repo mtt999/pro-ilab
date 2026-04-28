@@ -92,7 +92,8 @@ export default function App() {
       const allowed = ['dashboard', 'projects', 'project-detail', 'training', 'profile', 'equipmenthub', 'booking', 'remessages']
       if (!allowed.includes(screen)) setScreen('dashboard')
     }
-    if ((session?.role === 'user' || session?.role === 'admin') && userAccess && screen !== 'dashboard' && screen !== 'profile') {
+    const INTERNAL = new Set(['dashboard', 'profile', 'inspection', 'results', 'project-detail'])
+    if ((session?.role === 'user' || session?.role === 'admin') && userAccess && !INTERNAL.has(screen)) {
       if (!userAccess.has(screen)) setScreen('dashboard')
     }
   }, [session, screen, userAccess])

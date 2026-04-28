@@ -663,17 +663,18 @@ function StaffPanel({ toast }) {
           </button>
         ))}
       </div>
-      {staffTab === 'list'   && <StaffListPanel toast={toast} showPasswords={true} />}
+      {staffTab === 'list'   && <StaffListPanel toast={toast} session={session} />}
       {staffTab === 'access' && <AccessControl toast={toast} />}
     </div>
   )
 }
 
-function StaffListPanel({ toast, showPasswords = false }) {
+function StaffListPanel({ toast, session }) {
   const [staff, setStaff] = useState([])
   const [loading, setLoading] = useState(true)
   const [showModal, setShowModal] = useState(false)
   const [editStaff, setEditStaff] = useState(null)
+  const [revealedId, setRevealedId] = useState(null)
   useEffect(() => { load() }, [])
   async function load() { setLoading(true); const { data } = await sb.from('users').select('*').eq('role', 'user').order('name'); setStaff(data || []); setLoading(false) }
   async function saveStaff(form, id) {
@@ -706,7 +707,17 @@ function StaffListPanel({ toast, showPasswords = false }) {
                   {!s.is_active && <span style={{ fontSize: 11, color: 'var(--accent2)', marginLeft: 6 }}>Inactive</span>}
                 </div>
                 <div style={{ fontSize: 12, color: 'var(--text3)', fontFamily: 'var(--mono)', display: 'flex', gap: 10, flexWrap: 'wrap', marginTop: 2 }}>
-                  {s.email && <span>📧 {s.email}</span>}{showPasswords && s.password && <span>🔑 {s.password}</span>}
+                  {s.email && <span>📧 {s.email}</span>}
+                  {s.password && (() => {
+                    const isOwn = session?.userId === s.id || session?.username === s.email
+                    if (!isOwn) return <span style={{ fontSize: 11, color: 'var(--text3)' }}>🔑 ••••••••</span>
+                    const revealed = revealedId === s.id
+                    return (
+                      <span style={{ cursor: 'pointer', userSelect: 'none' }} onClick={() => setRevealedId(revealed ? null : s.id)} title={revealed ? 'Hide password' : 'Click to reveal your password'}>
+                        🔑 {revealed ? s.password : '••••••••'} <span style={{ fontSize: 10, color: 'var(--accent)' }}>{revealed ? '🙈 hide' : '👁 show'}</span>
+                      </span>
+                    )
+                  })()}
                 </div>
                 <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginTop: 8 }}>
                   <span style={{ fontSize: 11, color: 'var(--text3)' }}>Change role:</span>
@@ -740,7 +751,7 @@ function StaffModal({ staff, onClose, onSave }) {
           <div className="field"><label>Email</label><input type="email" value={form.email} onChange={e=>setForm(f=>({...f,email:e.target.value}))} placeholder="netid@illinois.edu" /></div>
         </div>
         <div className="grid-2">
-          <div className="field"><label>Password{staff ? ' (leave blank to keep)' : ' *'}</label><input type="text" value={form.password} onChange={e=>setForm(f=>({...f,password:e.target.value}))} placeholder={staff ? 'Type to change' : 'Min. 6 chars'} />{staff && <div style={{ fontSize: 11, color: 'var(--text3)', marginTop: 4 }}>Current: {staff.password || '—'}</div>}</div>
+          <div className="field"><label>Password{staff ? ' (leave blank to keep)' : ' *'}</label><input type="text" value={form.password} onChange={e=>setForm(f=>({...f,password:e.target.value}))} placeholder={staff ? 'Type to change' : 'Min. 6 chars'} /></div>
           <div className="field"><label>Phone</label><input value={form.phone} onChange={e=>setForm(f=>({...f,phone:e.target.value}))} /></div>
         </div>
         <div style={{ display:'flex', gap:10, marginTop:8 }}>
@@ -864,7 +875,7 @@ function StaffProfile({ session }) {
       </div>
       {activeTab === 'info'      && <UserProfileForm session={session} toast={toast} />}
       {activeTab === 'students'  && <StudentsPanel toast={toast} />}
-      {activeTab === 'staff'     && <StaffListPanel toast={toast} />}
+      {activeTab === 'staff'     && <StaffListPanel toast={toast} session={session} />}
       {activeTab === 'dashboard' && <StaffStudentIconManager />}
       {activeTab === 'notifs'    && <NotificationPrefsPanel userId={session?.userId} role="user" />}
     </div>
