@@ -426,7 +426,7 @@ function ResultsTab({ projects, session }) {
   const [editingId, setEditingId] = useState(null)
   const [saving,    setSaving]    = useState(false)
 
-  const emptyForm = { test_name: '', project_id: '', equipment_id: '', result_type: 'number', result_value: '', description: '', result_date: new Date().toISOString().split('T')[0] }
+  const emptyForm = { test_name: '', specimen_name: '', project_id: '', equipment_id: '', result_type: 'number', result_value: '', description: '', result_date: new Date().toISOString().split('T')[0] }
   const [form, setForm]           = useState(emptyForm)
   const [equipSearch, setEquipSearch] = useState('')
   const [selectedEquip, setSelectedEquip] = useState(null)
@@ -454,7 +454,8 @@ function ResultsTab({ projects, session }) {
 
   function openEdit(r) {
     setForm({
-      test_name: r.test_name || '', project_id: r.project_id || '',
+      test_name: r.test_name || '', specimen_name: r.specimen_name || '',
+      project_id: r.project_id || '',
       equipment_id: r.equipment_id || '', result_type: r.result_type || 'number',
       result_value: r.result_value || '', description: r.explanation || '',
       result_date: r.date || '',
@@ -474,6 +475,7 @@ function ResultsTab({ projects, session }) {
     const payload = {
       test_name: form.test_name.trim(),
       sample_name: form.test_name.trim(),
+      specimen_name: form.specimen_name.trim() || null,
       project_id: form.project_id,
       equipment_id: form.equipment_id, result_type: form.result_type,
       result_value: String(form.result_value),
@@ -516,11 +518,18 @@ function ResultsTab({ projects, session }) {
             {editingId ? '✏️ Edit Result' : '+ New Test Result'}
           </div>
 
-          {/* Row 1: Test Name */}
-          <div className="field">
-            <label>Test Name *</label>
-            <input value={form.test_name} onChange={e => setForm(f => ({ ...f, test_name: e.target.value }))}
-              placeholder="e.g. Marshall Stability, Asphalt Content, Density Test…" autoFocus />
+          {/* Row 1: Test Name + Specimen Name */}
+          <div className="grid-2">
+            <div className="field">
+              <label>Test Name *</label>
+              <input value={form.test_name} onChange={e => setForm(f => ({ ...f, test_name: e.target.value }))}
+                placeholder="e.g. Marshall Stability, Density Test…" autoFocus />
+            </div>
+            <div className="field">
+              <label>Specimen Name</label>
+              <input value={form.specimen_name} onChange={e => setForm(f => ({ ...f, specimen_name: e.target.value }))}
+                placeholder="e.g. S1, Core-3, Mix-A…" />
+            </div>
           </div>
 
           {/* Row 2: Project + Date */}
