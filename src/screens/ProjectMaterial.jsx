@@ -499,9 +499,11 @@ function ResultsTab({ projects, session }) {
     if (uploadFile && savedId) {
       const path = `${form.project_id}/${form.equipment_id}/${Date.now()}-${uploadFile.name}`
       const { error: upErr } = await sb.storage.from('project-records').upload(path, uploadFile, { contentType: uploadFile.type, upsert: false })
-      if (!upErr) {
+      if (upErr) {
+        toast('File upload failed: ' + (upErr.message || 'Check that the "project-records" storage bucket exists and is public.'))
+      } else {
         const { data: urlData } = sb.storage.from('project-records').getPublicUrl(path)
-        await sb.from('project_record_files').insert({
+        const { error: dbErr } = await sb.from('project_record_files').insert({
           project_id: form.project_id,
           equipment_id: form.equipment_id || null,
           test_result_id: savedId,
@@ -512,8 +514,7 @@ function ResultsTab({ projects, session }) {
           file_type: uploadFile.type,
           created_by: session?.username || session?.name || null,
         })
-      } else {
-        toast('Result saved but file upload failed — check storage bucket.')
+        if (dbErr) toast('File uploaded but record save failed: ' + (dbErr.message || 'Run the project_record_files SQL migration.'))
       }
     }
     toast(editingId ? 'Result updated ✓' : 'Result saved ✓')
