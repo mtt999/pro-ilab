@@ -885,7 +885,7 @@ function StaffProfile({ session }) {
       {activeTab === 'info'      && <UserProfileForm session={session} toast={toast} />}
       {activeTab === 'students'  && <StudentsPanel toast={toast} session={session} />}
       {activeTab === 'staff'     && <StaffListPanel toast={toast} session={session} />}
-      {activeTab === 'dashboard' && <StaffStudentIconManager />}
+      {activeTab === 'dashboard' && <DashboardIconsPanel session={session} />}
       {activeTab === 'notifs'    && <NotificationPrefsPanel userId={session?.userId} role="user" />}
     </div>
   )
