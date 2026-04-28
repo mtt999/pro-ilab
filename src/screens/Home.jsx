@@ -780,11 +780,12 @@ export default function Home() {
   }
 
   const isAdmin = session?.role === 'admin'
+  const canManage = session?.role === 'admin' || session?.role === 'user' || session?.loginMode === 'solo'
 
   const subTabs = [
     { key: 'inspect',  label: 'Inspection' },
     { key: 'export',   label: 'Export Data' },
-    ...(isAdmin ? [
+    ...(canManage ? [
       { key: 'rooms',    label: 'Rooms' },
       { key: 'supplies', label: 'Supplies' },
       { key: 'import',   label: 'Import' },
