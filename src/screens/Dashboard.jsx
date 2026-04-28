@@ -344,6 +344,7 @@ export default function Dashboard() {
     const imgs = {
       pm:      '/pro-ilab/icon-pm.svg',
       barcode: '/pro-ilab/icon-barcode.svg',
+      profile: '/pro-ilab/icon-profile.svg',
     }
     data?.forEach(r => {
       if (r.key === 'mileage_url') setMileageUrl(r.value)
