@@ -484,14 +484,256 @@ function ResultsTab({ projects, session }) {
   )
 }
 
-// ── Workspace Tab (members / submit results / links) ───────────
+// ── Data Analysis ─────────────────────────────────────────────
+function DataAnalysis() {
+  const { session, toast } = useAppStore()
+  const [equipment, setEquipment]   = useState([])
+  const [selected, setSelected]     = useState(null)
+  const [search, setSearch]         = useState('')
+  const [results, setResults]       = useState([])
+  const [comments, setComments]     = useState([])
+  const [newComment, setNewComment] = useState('')
+  const [loadingEq, setLoadingEq]   = useState(true)
+  const [loadingRes, setLoadingRes] = useState(false)
+  const [postingCmt, setPostingCmt] = useState(false)
+  const [dateFrom, setDateFrom]     = useState('')
+  const [dateTo, setDateTo]         = useState('')
+
+  useEffect(() => {
+    sb.from('equipment_inventory').select('id, equipment_name, category').eq('is_active', true).order('category').order('equipment_name')
+      .then(({ data }) => { setEquipment(data || []); setLoadingEq(false) })
+  }, [])
+
+  useEffect(() => {
+    if (!selected) return
+    setLoadingRes(true)
+    Promise.all([
+      sb.from('test_result_entries').select('*').eq('equipment_id', selected.id).order('date', { ascending: true }),
+      sb.from('analysis_comments').select('*').eq('equipment_id', selected.id).order('created_at', { ascending: true }),
+    ]).then(([r, c]) => { setResults(r.data || []); setComments(c.data || []); setLoadingRes(false) })
+  }, [selected])
+
+  async function postComment() {
+    if (!newComment.trim()) return
+    setPostingCmt(true)
+    const { data, error } = await sb.from('analysis_comments').insert({
+      equipment_id: selected.id,
+      author: session?.username || session?.name || session?.email || 'Anonymous',
+      body: newComment.trim(),
+    }).select().single()
+    if (!error) { setComments(prev => [...prev, data]); setNewComment('') }
+    else toast('Failed to post comment.')
+    setPostingCmt(false)
+  }
+
+  async function deleteComment(id) {
+    await sb.from('analysis_comments').delete().eq('id', id)
+    setComments(prev => prev.filter(c => c.id !== id))
+  }
+
+  const categories = [...new Set(equipment.map(e => e.category).filter(Boolean))]
+  const filteredEq = equipment.filter(e =>
+    !search.trim() || e.equipment_name?.toLowerCase().includes(search.toLowerCase()) || e.category?.toLowerCase().includes(search.toLowerCase())
+  )
+  const filteredResults = results.filter(r => {
+    if (dateFrom && r.date < dateFrom) return false
+    if (dateTo   && r.date > dateTo)   return false
+    return true
+  })
+
+  const numericVals = filteredResults.filter(r => r.result_type === 'number' || r.result_type === 'percentage').map(r => parseFloat(r.result_value)).filter(v => !isNaN(v))
+  const pfResults   = filteredResults.filter(r => r.result_type === 'pass_fail')
+  const passRate    = pfResults.length ? Math.round((pfResults.filter(r => r.result_value === 'Pass').length / pfResults.length) * 100) : null
+
+  let stats = null
+  if (numericVals.length > 1) {
+    const avg = numericVals.reduce((a, b) => a + b, 0) / numericVals.length
+    const std = Math.sqrt(numericVals.reduce((s, v) => s + Math.pow(v - avg, 2), 0) / numericVals.length)
+    stats = { avg, min: Math.min(...numericVals), max: Math.max(...numericVals), std, count: numericVals.length }
+  }
+  const isOutlier = v => stats && Math.abs(parseFloat(v) - stats.avg) > 2 * stats.std
+  const chartMax  = numericVals.length ? Math.max(...numericVals) : 1
+
+  return (
+    <div style={{ display: 'grid', gridTemplateColumns: '220px 1fr', gap: 16, alignItems: 'start' }}>
+      {/* Left: equipment list */}
+      <div style={{ background: 'var(--surface)', border: '1px solid var(--border)', borderRadius: 'var(--radius-lg)', overflow: 'hidden' }}>
+        <div style={{ padding: '10px 12px', borderBottom: '1px solid var(--border)' }}>
+          <input value={search} onChange={e => setSearch(e.target.value)} placeholder="🔍 Search equipment…" style={{ width: '100%', fontSize: 13 }} />
+        </div>
+        {loadingEq
+          ? <div style={{ textAlign: 'center', padding: 24 }}><div className="spinner" style={{ margin: '0 auto' }} /></div>
+          : categories.map(cat => {
+              const items = filteredEq.filter(e => e.category === cat)
+              if (!items.length) return null
+              return (
+                <div key={cat}>
+                  <div style={{ fontSize: 10, fontWeight: 700, color: 'var(--text3)', fontFamily: 'var(--mono)', textTransform: 'uppercase', letterSpacing: '0.06em', padding: '7px 12px 3px', background: 'var(--surface2)' }}>{cat}</div>
+                  {items.map(e => {
+                    const active = selected?.id === e.id
+                    return (
+                      <div key={e.id} onClick={() => { setSelected(e); setDateFrom(''); setDateTo('') }}
+                        style={{ padding: '8px 12px', cursor: 'pointer', background: active ? 'var(--accent3-light)' : 'transparent', borderLeft: `3px solid ${active ? 'var(--accent3)' : 'transparent'}` }}>
+                        <div style={{ fontSize: 13, fontWeight: active ? 600 : 400, color: active ? 'var(--accent3)' : 'var(--text)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{e.equipment_name}</div>
+                      </div>
+                    )
+                  })}
+                </div>
+              )
+            })
+        }
+      </div>
+
+      {/* Right: analysis panel */}
+      {!selected ? (
+        <div style={{ background: 'var(--surface)', border: '1px solid var(--border)', borderRadius: 'var(--radius-lg)', padding: 48, textAlign: 'center', color: 'var(--text3)' }}>
+          <div style={{ fontSize: 36, marginBottom: 8 }}>📊</div>
+          <div style={{ fontWeight: 700, fontSize: 16, color: 'var(--text)', marginBottom: 6 }}>Select equipment to analyse</div>
+          <div style={{ fontSize: 13 }}>Compare results, view statistics, and discuss findings with your team.</div>
+        </div>
+      ) : (
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
+          {/* Header + date filter */}
+          <div style={{ background: 'var(--surface)', border: '1px solid var(--border)', borderRadius: 'var(--radius-lg)', padding: '16px 20px' }}>
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: 10 }}>
+              <div style={{ fontWeight: 700, fontSize: 16 }}>{selected.equipment_name}</div>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 13 }}>
+                <span style={{ color: 'var(--text3)' }}>From</span>
+                <input type="date" value={dateFrom} onChange={e => setDateFrom(e.target.value)} style={{ fontSize: 12, padding: '4px 8px' }} />
+                <span style={{ color: 'var(--text3)' }}>To</span>
+                <input type="date" value={dateTo} onChange={e => setDateTo(e.target.value)} style={{ fontSize: 12, padding: '4px 8px' }} />
+                {(dateFrom || dateTo) && <button onClick={() => { setDateFrom(''); setDateTo('') }} style={{ border: 'none', background: 'none', cursor: 'pointer', color: 'var(--text3)', fontSize: 12 }}>✕ Clear</button>}
+              </div>
+            </div>
+          </div>
+
+          {loadingRes ? (
+            <div style={{ textAlign: 'center', padding: 40 }}><div className="spinner" style={{ margin: '0 auto' }} /></div>
+          ) : filteredResults.length === 0 ? (
+            <div style={{ background: 'var(--surface)', border: '1px solid var(--border)', borderRadius: 'var(--radius-lg)', padding: 40, textAlign: 'center', color: 'var(--text3)', fontSize: 13 }}>
+              No results yet for this equipment{(dateFrom || dateTo) ? ' in this date range' : ''}.
+            </div>
+          ) : (
+            <>
+              {/* Stats */}
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(130px, 1fr))', gap: 10 }}>
+                {[
+                  { label: 'Total Results', value: filteredResults.length, color: 'var(--accent3)' },
+                  ...(stats ? [
+                    { label: 'Average', value: stats.avg.toFixed(2), color: '#0369a1' },
+                    { label: 'Min',     value: stats.min.toFixed(2), color: '#2a6049' },
+                    { label: 'Max',     value: stats.max.toFixed(2), color: '#c84b2f' },
+                    { label: 'Std Dev', value: stats.std.toFixed(2), color: '#7c4dbd' },
+                  ] : []),
+                  ...(passRate !== null ? [{ label: 'Pass Rate', value: passRate + '%', color: passRate >= 80 ? '#2a6049' : '#c84b2f' }] : []),
+                ].map(s => (
+                  <div key={s.label} style={{ background: 'var(--surface)', border: '1px solid var(--border)', borderRadius: 12, padding: '12px 16px', textAlign: 'center' }}>
+                    <div style={{ fontSize: 22, fontWeight: 700, color: s.color }}>{s.value}</div>
+                    <div style={{ fontSize: 11, color: 'var(--text3)', marginTop: 2 }}>{s.label}</div>
+                  </div>
+                ))}
+              </div>
+
+              {/* Trend chart */}
+              {numericVals.length > 1 && (
+                <div style={{ background: 'var(--surface)', border: '1px solid var(--border)', borderRadius: 'var(--radius-lg)', padding: '16px 20px' }}>
+                  <div style={{ fontWeight: 600, fontSize: 13, marginBottom: 12 }}>Result Trend</div>
+                  <div style={{ display: 'flex', alignItems: 'flex-end', gap: 6, height: 80 }}>
+                    {filteredResults.filter(r => r.result_type === 'number' || r.result_type === 'percentage').map(r => {
+                      const val = parseFloat(r.result_value)
+                      const h = Math.max(4, Math.round((val / chartMax) * 72))
+                      return (
+                        <div key={r.id} title={`${r.date} — ${r.sample_name}: ${r.result_value}`}
+                          style={{ flex: 1, maxWidth: 40, height: h, borderRadius: '4px 4px 0 0', background: isOutlier(r.result_value) ? '#c84b2f' : 'var(--accent3)', opacity: 0.85, cursor: 'default' }} />
+                      )
+                    })}
+                  </div>
+                  <div style={{ fontSize: 11, color: 'var(--text3)', marginTop: 6 }}>Red = outliers (&gt;2× std dev from avg)</div>
+                </div>
+              )}
+
+              {/* Results table */}
+              <div style={{ background: 'var(--surface)', border: '1px solid var(--border)', borderRadius: 'var(--radius-lg)', overflow: 'hidden' }}>
+                <div style={{ padding: '12px 16px', borderBottom: '1px solid var(--border)', fontWeight: 600, fontSize: 13 }}>All Results</div>
+                <div style={{ overflowX: 'auto' }}>
+                  <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>
+                    <thead>
+                      <tr style={{ background: 'var(--surface2)' }}>
+                        {['Date', 'Sample', 'Type', 'Result', 'By', 'Notes'].map(h => (
+                          <th key={h} style={{ padding: '8px 12px', textAlign: 'left', fontWeight: 600, fontSize: 11, color: 'var(--text3)', textTransform: 'uppercase', letterSpacing: '0.05em', whiteSpace: 'nowrap' }}>{h}</th>
+                        ))}
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {filteredResults.map((r, i) => {
+                        const outlier = (r.result_type === 'number' || r.result_type === 'percentage') && isOutlier(r.result_value)
+                        return (
+                          <tr key={r.id} style={{ borderTop: '1px solid var(--border)', background: outlier ? '#fff5f5' : i % 2 === 0 ? 'var(--surface)' : 'var(--surface2)' }}>
+                            <td style={{ padding: '8px 12px', whiteSpace: 'nowrap' }}>{r.date}</td>
+                            <td style={{ padding: '8px 12px' }}>{r.sample_name}</td>
+                            <td style={{ padding: '8px 12px', color: 'var(--text3)', fontSize: 11, textTransform: 'capitalize' }}>{r.result_type?.replace('_', '/')}</td>
+                            <td style={{ padding: '8px 12px', fontWeight: 600, color: outlier ? '#c84b2f' : r.result_value === 'Pass' ? '#2a6049' : r.result_value === 'Fail' ? '#c84b2f' : 'var(--text)' }}>
+                              {r.result_type === 'percentage' ? r.result_value + '%' : r.result_value}{outlier ? ' ⚠️' : ''}
+                            </td>
+                            <td style={{ padding: '8px 12px', color: 'var(--text3)' }}>{r.created_by || '—'}</td>
+                            <td style={{ padding: '8px 12px', color: 'var(--text2)', maxWidth: 200, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{r.explanation || '—'}</td>
+                          </tr>
+                        )
+                      })}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            </>
+          )}
+
+          {/* Discussion */}
+          <div style={{ background: 'var(--surface)', border: '1px solid var(--border)', borderRadius: 'var(--radius-lg)', overflow: 'hidden' }}>
+            <div style={{ padding: '12px 16px', borderBottom: '1px solid var(--border)', fontWeight: 600, fontSize: 13 }}>💬 Team Discussion</div>
+            <div style={{ padding: 16, display: 'flex', flexDirection: 'column', gap: 10, maxHeight: 300, overflowY: 'auto' }}>
+              {comments.length === 0
+                ? <div style={{ fontSize: 13, color: 'var(--text3)', textAlign: 'center', padding: '16px 0' }}>No comments yet. Start the discussion below.</div>
+                : comments.map(c => (
+                    <div key={c.id} style={{ display: 'flex', gap: 10 }}>
+                      <div style={{ width: 30, height: 30, borderRadius: '50%', background: 'var(--accent3-light)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 11, fontWeight: 700, color: 'var(--accent3)', flexShrink: 0 }}>
+                        {c.author?.slice(0, 2).toUpperCase()}
+                      </div>
+                      <div style={{ flex: 1 }}>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 3 }}>
+                          <span style={{ fontWeight: 600, fontSize: 13 }}>{c.author}</span>
+                          <span style={{ fontSize: 11, color: 'var(--text3)' }}>{new Date(c.created_at).toLocaleDateString()}</span>
+                          {(session?.username === c.author || session?.name === c.author || session?.email === c.author || session?.role === 'admin') && (
+                            <button onClick={() => deleteComment(c.id)} style={{ marginLeft: 'auto', border: 'none', background: 'none', cursor: 'pointer', fontSize: 11, color: 'var(--text3)' }}>✕</button>
+                          )}
+                        </div>
+                        <div style={{ fontSize: 13, lineHeight: 1.5, background: 'var(--surface2)', borderRadius: 8, padding: '8px 12px' }}>{c.body}</div>
+                      </div>
+                    </div>
+                  ))
+              }
+            </div>
+            <div style={{ padding: '12px 16px', borderTop: '1px solid var(--border)', display: 'flex', gap: 8 }}>
+              <input value={newComment} onChange={e => setNewComment(e.target.value)} onKeyDown={e => e.key === 'Enter' && !e.shiftKey && postComment()}
+                placeholder="Add analysis note or comment…" style={{ flex: 1, fontSize: 13 }} />
+              <button onClick={postComment} disabled={postingCmt || !newComment.trim()} className="btn btn-primary btn-sm">
+                {postingCmt ? '…' : 'Post'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+    </div>
+  )
+}
+
+// ── Workspace Tab (members / data analysis / links) ────────────
 function WorkspaceTab({ session, projects, isSolo, readOnly }) {
   const [wsTab, setWsTab] = useState('members')
 
   const wsTabs = [
-    { key: 'members', label: '👥 Project Members' },
-    { key: 'submit',  label: '🏆 Submit Results' },
-    { key: 'links',   label: '🔗 Links' },
+    { key: 'members',  label: '👥 Project Members' },
+    { key: 'analysis', label: '📊 Data Analysis' },
+    { key: 'links',    label: '🔗 Links' },
   ]
 
   return (
@@ -518,9 +760,7 @@ function WorkspaceTab({ session, projects, isSolo, readOnly }) {
           )
       )}
 
-      {wsTab === 'submit' && (
-        <SubmitResultPanel projects={projects} session={session} />
-      )}
+      {wsTab === 'analysis' && <DataAnalysis />}
 
       {wsTab === 'links' && (
         <LinksPanel projects={projects} readOnly={readOnly} />
