@@ -370,14 +370,72 @@ function LinksPanel({ projects, readOnly }) {
   )
 }
 
+// ── Adaptive result input ──────────────────────────────────────
+function ResultValueInput({ type, value, onChange }) {
+  if (type === 'pass_fail') return (
+    <div style={{ display: 'flex', gap: 8 }}>
+      {['Pass', 'Fail'].map(opt => (
+        <button key={opt} type="button" onClick={() => onChange(opt)}
+          style={{ padding: '7px 20px', border: `1.5px solid ${value === opt ? (opt === 'Pass' ? '#2a6049' : '#c84b2f') : 'var(--border)'}`, borderRadius: 8, background: value === opt ? (opt === 'Pass' ? '#e8f2ee' : '#fdf0ed') : 'var(--surface)', color: value === opt ? (opt === 'Pass' ? '#2a6049' : '#c84b2f') : 'var(--text2)', cursor: 'pointer', fontWeight: value === opt ? 700 : 400, fontSize: 13 }}>
+          {opt}
+        </button>
+      ))}
+    </div>
+  )
+  if (type === 'percentage') return (
+    <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+      <input type="number" min="0" max="100" step="0.01" value={value} onChange={e => onChange(e.target.value)} placeholder="0" style={{ width: 100 }} />
+      <span style={{ fontWeight: 600, color: 'var(--text2)' }}>%</span>
+    </div>
+  )
+  if (type === 'temperature') return (
+    <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+      <input type="number" step="0.1" value={value} onChange={e => onChange(e.target.value)} placeholder="0" style={{ width: 100 }} />
+      <span style={{ fontWeight: 600, color: 'var(--text2)' }}>°C</span>
+    </div>
+  )
+  if (type === 'number' || type === 'ratio') return (
+    <input type="number" step="any" value={value} onChange={e => onChange(e.target.value)} placeholder="Enter value…" />
+  )
+  return <input type="text" value={value} onChange={e => onChange(e.target.value)} placeholder="Enter value…" />
+}
+
+const RESULT_TYPES = [
+  { value: 'number',      label: 'Number',       hint: 'Plain numeric value' },
+  { value: 'percentage',  label: 'Percentage %',  hint: '0 – 100%' },
+  { value: 'pass_fail',   label: 'Pass / Fail',   hint: 'Pass or Fail toggle' },
+  { value: 'text',        label: 'Text',          hint: 'Free-form text' },
+  { value: 'temperature', label: 'Temperature °C',hint: 'Numeric in °C' },
+  { value: 'ratio',       label: 'Ratio',         hint: 'Decimal ratio e.g. 0.75' },
+]
+
+function formatResultValue(type, value) {
+  if (!value && value !== 0) return '—'
+  if (type === 'percentage')  return value + '%'
+  if (type === 'temperature') return value + '°C'
+  return value
+}
+
 // ── Project Test Results Tab ───────────────────────────────────
 function ResultsTab({ projects, session }) {
   const { toast } = useAppStore()
-  const [results, setResults] = useState([])
-  const [loading, setLoading] = useState(true)
-  const [showForm, setShowForm] = useState(false)
-  const [form, setForm] = useState({ project_id: '', result_type: '', description: '', result_date: '' })
-  const [saving, setSaving] = useState(false)
+  const [results,   setResults]   = useState([])
+  const [equipment, setEquipment] = useState([])
+  const [loading,   setLoading]   = useState(true)
+  const [showForm,  setShowForm]  = useState(false)
+  const [editingId, setEditingId] = useState(null)
+  const [saving,    setSaving]    = useState(false)
+
+  const emptyForm = { test_name: '', project_id: '', equipment_id: '', result_type: 'number', result_value: '', description: '', result_date: new Date().toISOString().split('T')[0] }
+  const [form, setForm]           = useState(emptyForm)
+  const [equipSearch, setEquipSearch] = useState('')
+  const [selectedEquip, setSelectedEquip] = useState(null)
+  const [showEquipPicker, setShowEquipPicker] = useState(false)
+
+  useEffect(() => {
+    sb.from('equipment_inventory').select('id, equipment_name, category').eq('is_active', true).order('category').order('equipment_name')
+      .then(({ data }) => setEquipment(data || []))
+  }, [])
 
   useEffect(() => { loadResults() }, [projects.length])
 
@@ -385,95 +443,205 @@ function ResultsTab({ projects, session }) {
     setLoading(true)
     const ids = projects.map(p => p.id)
     if (!ids.length) { setResults([]); setLoading(false); return }
-    const { data } = await sb.from('project_results').select('*').in('project_id', ids).order('created_at', { ascending: false })
+    const { data } = await sb.from('test_result_entries').select('*').in('project_id', ids).order('created_at', { ascending: false })
     setResults(data || [])
     setLoading(false)
   }
 
-  async function submitResult() {
-    if (!form.project_id) { toast('Select a project.'); return }
-    if (!form.description.trim()) { toast('Description is required.'); return }
-    setSaving(true)
-    const { error } = await sb.from('project_results').insert({
-      project_id: form.project_id,
-      submitted_by: session?.name || session?.email || 'Unknown',
-      result_type: form.result_type || null,
-      description: form.description.trim(),
-      result_date: form.result_date || null,
-    })
-    if (error) {
-      toast('Could not save. Run the SQL migration in Supabase first.')
-    } else {
-      toast('Result submitted!')
-      setForm({ project_id: '', result_type: '', description: '', result_date: '' })
-      setShowForm(false)
-      loadResults()
-    }
-    setSaving(false)
+  function openAdd() {
+    setForm(emptyForm); setSelectedEquip(null); setEditingId(null); setEquipSearch(''); setShowForm(true)
   }
 
-  const projectMap = Object.fromEntries(projects.map(p => [p.id, p.name]))
+  function openEdit(r) {
+    setForm({
+      test_name: r.test_name || '', project_id: r.project_id || '',
+      equipment_id: r.equipment_id || '', result_type: r.result_type || 'number',
+      result_value: r.result_value || '', description: r.explanation || '',
+      result_date: r.date || '',
+    })
+    setSelectedEquip(equipment.find(e => e.id === r.equipment_id) || null)
+    setEditingId(r.id); setShowForm(true)
+  }
+
+  function cancelForm() { setShowForm(false); setEditingId(null); setForm(emptyForm); setSelectedEquip(null) }
+
+  async function save() {
+    if (!form.test_name.trim())  { toast('Test name is required.'); return }
+    if (!form.project_id)        { toast('Select a project.'); return }
+    if (!form.equipment_id)      { toast('Select equipment.'); return }
+    if (form.result_value === '') { toast('Enter a result value.'); return }
+    setSaving(true)
+    const payload = {
+      test_name: form.test_name.trim(), project_id: form.project_id,
+      equipment_id: form.equipment_id, result_type: form.result_type,
+      result_value: String(form.result_value),
+      explanation: form.description.trim() || null,
+      date: form.result_date || null,
+      created_by: session?.username || session?.name || session?.email || null,
+    }
+    const { error } = editingId
+      ? await sb.from('test_result_entries').update(payload).eq('id', editingId)
+      : await sb.from('test_result_entries').insert(payload)
+    if (error) { toast('Save failed: ' + error.message); setSaving(false); return }
+    toast(editingId ? 'Result updated ✓' : 'Result saved ✓')
+    setSaving(false); cancelForm(); loadResults()
+  }
+
+  async function deleteResult(id) {
+    if (!confirm('Delete this result?')) return
+    await sb.from('test_result_entries').delete().eq('id', id)
+    setResults(prev => prev.filter(r => r.id !== id))
+    toast('Deleted.')
+  }
+
+  const projectMap  = Object.fromEntries(projects.map(p => [p.id, p.name || p.project_name]))
+  const equipMap    = Object.fromEntries(equipment.map(e => [e.id, e.equipment_name]))
+  const filteredEq  = equipment.filter(e => !equipSearch.trim() || e.equipment_name?.toLowerCase().includes(equipSearch.toLowerCase()) || e.category?.toLowerCase().includes(equipSearch.toLowerCase()))
+  const eqCategories = [...new Set(filteredEq.map(e => e.category).filter(Boolean))]
 
   return (
     <div>
+      {/* Header */}
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 }}>
         <div style={{ fontWeight: 600, fontSize: 15 }}>Project Test Results</div>
-        <button className="btn btn-sm btn-primary" onClick={() => setShowForm(s => !s)}>
-          {showForm ? 'Cancel' : '+ Submit Result'}
-        </button>
+        {!showForm && <button className="btn btn-sm btn-primary" onClick={openAdd}>+ Add Result</button>}
       </div>
 
+      {/* Form */}
       {showForm && (
         <div className="card" style={{ marginBottom: 20, border: '1.5px solid var(--accent)' }}>
-          <div style={{ fontWeight: 600, fontSize: 14, marginBottom: 14 }}>Submit a new result</div>
+          <div style={{ fontWeight: 700, fontSize: 15, marginBottom: 16, color: 'var(--accent)' }}>
+            {editingId ? '✏️ Edit Result' : '+ New Test Result'}
+          </div>
+
+          {/* Row 1: Test Name */}
+          <div className="field">
+            <label>Test Name *</label>
+            <input value={form.test_name} onChange={e => setForm(f => ({ ...f, test_name: e.target.value }))}
+              placeholder="e.g. Marshall Stability, Asphalt Content, Density Test…" autoFocus />
+          </div>
+
+          {/* Row 2: Project + Date */}
           <div className="grid-2">
             <div className="field">
               <label>Project *</label>
               <select value={form.project_id} onChange={e => setForm(f => ({ ...f, project_id: e.target.value }))}>
                 <option value="">— Select project —</option>
-                {projects.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
+                {projects.map(p => <option key={p.id} value={p.id}>{p.name || p.project_name}</option>)}
               </select>
             </div>
             <div className="field">
-              <label>Result Type</label>
-              <input value={form.result_type} onChange={e => setForm(f => ({ ...f, result_type: e.target.value }))} placeholder="e.g. Marshall Test, Density…" />
+              <label>Result Date</label>
+              <input type="date" value={form.result_date} onChange={e => setForm(f => ({ ...f, result_date: e.target.value }))} />
             </div>
           </div>
+
+          {/* Row 3: Equipment picker */}
           <div className="field">
-            <label>Description / Values *</label>
-            <textarea rows={3} value={form.description} onChange={e => setForm(f => ({ ...f, description: e.target.value }))} placeholder="Test details, values, observations…" style={{ resize: 'vertical' }} />
+            <label>Equipment *</label>
+            <div style={{ border: '1px solid var(--border)', borderRadius: 8, overflow: 'hidden' }}>
+              <div style={{ padding: '8px 12px', borderBottom: '1px solid var(--border)', background: 'var(--surface2)' }}>
+                <input value={equipSearch} onChange={e => setEquipSearch(e.target.value)}
+                  placeholder="🔍 Search equipment…" style={{ width: '100%', border: 'none', background: 'transparent', fontSize: 13, outline: 'none' }} />
+              </div>
+              <div style={{ maxHeight: 180, overflowY: 'auto' }}>
+                {eqCategories.length === 0
+                  ? <div style={{ padding: 12, fontSize: 13, color: 'var(--text3)' }}>No equipment found.</div>
+                  : eqCategories.map(cat => (
+                      <div key={cat}>
+                        <div style={{ fontSize: 10, fontWeight: 700, color: 'var(--text3)', padding: '5px 12px 2px', background: 'var(--surface2)', textTransform: 'uppercase', letterSpacing: '0.05em' }}>{cat}</div>
+                        {filteredEq.filter(e => e.category === cat).map(e => {
+                          const active = form.equipment_id === e.id
+                          return (
+                            <div key={e.id} onClick={() => { setForm(f => ({ ...f, equipment_id: e.id })); setSelectedEquip(e) }}
+                              style={{ padding: '7px 12px', cursor: 'pointer', background: active ? 'var(--accent-light, #e8f4ff)' : 'transparent', borderLeft: `3px solid ${active ? 'var(--accent)' : 'transparent'}`, fontSize: 13, color: active ? 'var(--accent)' : 'var(--text)', fontWeight: active ? 600 : 400 }}>
+                              {e.equipment_name}
+                              {active && <span style={{ marginLeft: 6, fontSize: 11 }}>✓</span>}
+                            </div>
+                          )
+                        })}
+                      </div>
+                    ))
+                }
+              </div>
+              {selectedEquip && (
+                <div style={{ padding: '6px 12px', borderTop: '1px solid var(--border)', fontSize: 12, color: 'var(--accent)', background: 'var(--accent-light, #e8f4ff)', fontWeight: 600 }}>
+                  Selected: {selectedEquip.equipment_name}
+                </div>
+              )}
+            </div>
           </div>
+
+          {/* Row 4: Result Type + Value */}
+          <div className="grid-2">
+            <div className="field">
+              <label>Result Type *</label>
+              <select value={form.result_type} onChange={e => setForm(f => ({ ...f, result_type: e.target.value, result_value: '' }))}>
+                {RESULT_TYPES.map(t => <option key={t.value} value={t.value}>{t.label}</option>)}
+              </select>
+              <div style={{ fontSize: 11, color: 'var(--text3)', marginTop: 3 }}>{RESULT_TYPES.find(t => t.value === form.result_type)?.hint}</div>
+            </div>
+            <div className="field">
+              <label>Result Value *</label>
+              <ResultValueInput type={form.result_type} value={form.result_value} onChange={v => setForm(f => ({ ...f, result_value: v }))} />
+            </div>
+          </div>
+
+          {/* Row 5: Notes */}
           <div className="field">
-            <label>Result Date</label>
-            <input type="date" value={form.result_date} onChange={e => setForm(f => ({ ...f, result_date: e.target.value }))} />
+            <label>Notes / Description</label>
+            <textarea rows={3} value={form.description} onChange={e => setForm(f => ({ ...f, description: e.target.value }))}
+              placeholder="Observations, conditions, sample details…" style={{ resize: 'vertical' }} />
           </div>
+
           <div style={{ display: 'flex', gap: 10 }}>
-            <button className="btn btn-primary btn-sm" onClick={submitResult} disabled={saving}>{saving ? 'Saving…' : 'Submit'}</button>
-            <button className="btn btn-sm" onClick={() => setShowForm(false)}>Cancel</button>
+            <button className="btn btn-primary btn-sm" onClick={save} disabled={saving}>{saving ? 'Saving…' : editingId ? 'Update Result' : 'Save Result'}</button>
+            <button className="btn btn-sm" onClick={cancelForm}>Cancel</button>
           </div>
         </div>
       )}
 
+      {/* Results list */}
       {loading ? (
         <div style={{ textAlign: 'center', padding: 32 }}><div className="spinner" style={{ margin: '0 auto' }} /></div>
       ) : results.length === 0 ? (
-        <div className="empty-state"><div className="empty-icon">✏️</div><div>No results submitted yet.</div></div>
+        <div className="empty-state"><div className="empty-icon">🧪</div><div>No results yet. Click "+ Add Result" to get started.</div></div>
       ) : (
-        <div>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
           {results.map(r => (
-            <div key={r.id} className="card" style={{ marginBottom: 10, padding: '14px 18px' }}>
+            <div key={r.id} className="card" style={{ padding: '14px 18px' }}>
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 12, flexWrap: 'wrap' }}>
                 <div style={{ flex: 1, minWidth: 0 }}>
-                  <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginBottom: 6 }}>
-                    <span style={{ fontWeight: 600, fontSize: 13, color: 'var(--accent)' }}>{projectMap[r.project_id] || 'Unknown project'}</span>
-                    {r.result_type && <span style={{ fontSize: 12, background: 'var(--surface2)', borderRadius: 99, padding: '2px 8px', color: 'var(--text2)' }}>{r.result_type}</span>}
+                  {/* Test name */}
+                  <div style={{ fontWeight: 700, fontSize: 14, marginBottom: 6 }}>{r.test_name || 'Untitled Test'}</div>
+                  {/* Tags */}
+                  <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', marginBottom: 8 }}>
+                    {r.project_id && projectMap[r.project_id] && (
+                      <span style={{ fontSize: 12, background: '#e8f0fe', color: '#1a56db', borderRadius: 99, padding: '2px 10px', fontWeight: 600 }}>📁 {projectMap[r.project_id]}</span>
+                    )}
+                    {r.equipment_id && equipMap[r.equipment_id] && (
+                      <span style={{ fontSize: 12, background: 'var(--surface2)', color: 'var(--text2)', borderRadius: 99, padding: '2px 10px' }}>🔧 {equipMap[r.equipment_id]}</span>
+                    )}
+                    <span style={{ fontSize: 12, background: 'var(--surface2)', color: 'var(--text2)', borderRadius: 99, padding: '2px 10px', textTransform: 'capitalize' }}>
+                      {RESULT_TYPES.find(t => t.value === r.result_type)?.label || r.result_type}
+                    </span>
                   </div>
-                  <div style={{ fontSize: 14, color: 'var(--text)', lineHeight: 1.5 }}>{r.description}</div>
-                  {r.submitted_by && <div style={{ fontSize: 12, color: 'var(--text3)', marginTop: 4 }}>by {r.submitted_by}</div>}
+                  {/* Result value */}
+                  <div style={{ fontSize: 18, fontWeight: 700, color: r.result_value === 'Pass' ? '#2a6049' : r.result_value === 'Fail' ? '#c84b2f' : 'var(--accent)', marginBottom: 4 }}>
+                    {formatResultValue(r.result_type, r.result_value)}
+                  </div>
+                  {r.explanation && <div style={{ fontSize: 13, color: 'var(--text2)', lineHeight: 1.5, marginTop: 4 }}>{r.explanation}</div>}
+                  {r.created_by && <div style={{ fontSize: 11, color: 'var(--text3)', marginTop: 6 }}>by {r.created_by}</div>}
                 </div>
-                <div style={{ fontSize: 11, color: 'var(--text3)', flexShrink: 0, textAlign: 'right' }}>
-                  {r.result_date && <div>{r.result_date}</div>}
-                  <div>{new Date(r.created_at).toLocaleDateString()}</div>
+                <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: 6, flexShrink: 0 }}>
+                  <div style={{ fontSize: 12, color: 'var(--text3)', textAlign: 'right' }}>
+                    {r.date && <div style={{ fontWeight: 600 }}>{r.date}</div>}
+                    <div>{new Date(r.created_at).toLocaleDateString()}</div>
+                  </div>
+                  <div style={{ display: 'flex', gap: 6 }}>
+                    <button onClick={() => openEdit(r)} className="btn btn-sm" style={{ fontSize: 12, padding: '3px 10px' }}>✏️ Edit</button>
+                    <button onClick={() => deleteResult(r.id)} className="btn btn-sm" style={{ fontSize: 12, padding: '3px 10px', color: '#c84b2f' }}>🗑</button>
+                  </div>
                 </div>
               </div>
             </div>
