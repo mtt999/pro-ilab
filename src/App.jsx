@@ -21,6 +21,7 @@ import BookingEquipment from './screens/BookingEquipment'
 import PM from './screens/PM'
 import Toast from './components/Toast'
 import DashboardIconPicker from './components/DashboardIconPicker'
+import BarcodeScannerScreen from './screens/BarcodeScannerScreen'
 
 // Detect if we're on the /admin route
 const IS_ADMIN_ROUTE = window.location.pathname.endsWith('/admin') || window.location.pathname.endsWith('/admin/')
@@ -89,9 +90,10 @@ export default function App() {
 
   useEffect(() => {
     if (session?.role === 'student') {
-      const allowed = ['dashboard', 'projects', 'project-detail', 'training', 'profile', 'equipmenthub', 'booking', 'remessages']
+      const allowed = ['dashboard', 'projects', 'project-detail', 'training', 'profile', 'equipmenthub', 'booking', 'remessages', 'barcode']
       if (!allowed.includes(screen)) setScreen('dashboard')
     }
+    if (screen === 'pm' && session?.role === 'student') setScreen('dashboard')
     const INTERNAL = new Set(['dashboard', 'profile', 'inspection', 'results', 'project-detail'])
     if ((session?.role === 'user' || session?.role === 'admin') && userAccess && !INTERNAL.has(screen)) {
       if (!userAccess.has(screen)) setScreen('dashboard')
@@ -127,6 +129,7 @@ export default function App() {
     booking: <BookingEquipment />,
     remessages: <REMessages />,
     pm: <PM />,
+    barcode: <BarcodeScannerScreen />,
   }
 
   return (

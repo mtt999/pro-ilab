@@ -2,11 +2,10 @@ import { useState, useEffect } from 'react'
 import { sb } from '../lib/supabase'
 import { useAppStore } from '../store/useAppStore'
 import { ALL_MODULES_META, PINNED_MODULES } from '../components/DashboardIconPicker'
-import DashboardIconPicker from '../components/DashboardIconPicker'
 
 function getModules(role, loginMode, activeModules) {
   const roleKey = loginMode === 'solo' ? 'solo' : 'team'
-  const studentAllowed = ['projects','training','booking','equipmenthub','mileage','labsafety','remessages','profile']
+  const studentAllowed = ['projects','training','booking','equipmenthub','mileage','labsafety','remessages','barcode','profile']
   const base = ALL_MODULES_META.filter(m => {
     if (!m.roles.includes(roleKey)) return false
     if (role === 'student' && !studentAllowed.includes(m.key)) return false
@@ -27,6 +26,7 @@ function getAllModulesForStudent() {
     { key: 'equipment',    screen: 'equipment',     label: 'Equipment Inventory',       sub: 'Lab equipment tracking',           icon: '🔧', bg: '#fef3c7', color: '#92400e', locked: true },
     { key: 'equipmenthub', screen: 'equipmenthub',  label: 'Equipment',                 sub: 'Info, SOP & standards',            icon: '📚', bg: '#e8f2ee', color: '#1e4d39' },
     { key: 'booking',      screen: 'booking',       label: 'Booking Equipment',         sub: 'Reserve lab equipment',            icon: '📅', bg: '#e0f2fe', color: '#0369a1' },
+    { key: 'barcode',      screen: 'barcode',       label: 'Barcode Scanner',           sub: 'Scan & look up lab materials',     icon: '📷', bg: '#e0f7fa', color: '#00796b' },
     { key: 'mileage',      screen: null,            label: 'Mileage Form',              sub: 'Submit mileage reimbursement',     icon: '🚗', bg: '#fdf0ed', color: '#c84b2f', external: true },
     { key: 'labsafety',    screen: null,            label: 'Lab Safety',                sub: 'Safety training & certification',  icon: '🦺', bg: '#fef3c7', color: '#92400e', external: true },
     { key: 'remessages',   screen: 'remessages',    label: 'Contact Lab Manager (REs)', sub: 'Notes, ideas & issue reports',     icon: '💬', bg: '#e8f2ee', color: '#2a6049' },
@@ -299,7 +299,6 @@ export default function Dashboard() {
   const [savingUrl, setSavingUrl] = useState(false)
   const [userAccess, setUserAccess] = useState(null)
   const [moduleImages, setModuleImages] = useState({})
-  const [showPicker, setShowPicker] = useState(false)
 
   const isAdmin   = session?.role === 'admin'
   const isStudent = session?.role === 'student'
@@ -341,7 +340,7 @@ export default function Dashboard() {
   useEffect(() => { loadSettings() }, [])
   async function loadSettings() {
     const { data } = await sb.from('settings').select('key, value')
-      .in('key', ['mileage_url','labsafety_url','img_supply','img_projects','img_training','img_equipment','img_equipmenthub','img_booking','img_mileage','img_labsafety','img_remessages','img_profile','img_pm'])
+      .in('key', ['mileage_url','labsafety_url','img_supply','img_projects','img_training','img_equipment','img_equipmenthub','img_booking','img_barcode','img_mileage','img_labsafety','img_remessages','img_profile','img_pm'])
     if (!data) return
     const imgs = {}
     data.forEach(r => {
@@ -378,16 +377,7 @@ export default function Dashboard() {
           <div style={{ fontSize:13, color:'var(--text3)', fontFamily:'var(--mono)' }}>{dateStr} · ICT Lab</div>
         </div>
         <div style={{ display:'flex', gap:8, alignItems:'center' }}>
-          {/* Customize button: admin only — staff/students use Profile → Dashboard Icons */}
-          {isAdmin && (
-            <button onClick={() => setShowPicker(true)}
-              style={{ padding:'6px 14px', border:'1px solid var(--border)', borderRadius:8, background:'var(--surface)', fontFamily:'var(--sans)', fontSize:13, fontWeight:500, cursor:'pointer', color:'var(--text2)', display:'flex', alignItems:'center', gap:6, transition:'all 0.15s' }}
-              onMouseEnter={e=>{e.currentTarget.style.borderColor='var(--accent)';e.currentTarget.style.color='var(--accent)'}}
-              onMouseLeave={e=>{e.currentTarget.style.borderColor='var(--border)';e.currentTarget.style.color='var(--text2)'}}
-            >
-              🎛️ Customize
-            </button>
-          )}
+
           {!isStudent && (
             <div style={{ display:'flex', background:'var(--surface2)', borderRadius:'var(--radius)', padding:3, gap:2 }}>
               <button onClick={() => switchView('grid')} style={{ padding:'6px 14px', border:'none', borderRadius:8, fontFamily:'var(--sans)', fontSize:13, fontWeight:500, cursor:'pointer', background:view==='grid'?'var(--surface)':'transparent', color:view==='grid'?'var(--text)':'var(--text2)', transition:'all 0.15s' }}>⊞ Cards</button>
@@ -407,12 +397,6 @@ export default function Dashboard() {
       {isStudent && view==='grid'      && <CardGridView modules={modules} onNavigate={s=>setScreen(s)} mileageUrl={mileageUrl} labSafetyUrl={labSafetyUrl} isAdmin={false} onEditUrl={()=>{}} moduleImages={moduleImages} isStudent={true} activeModules={activeModules} />}
       {!isStudent && view==='grid'     && <CardGridView modules={modules} onNavigate={s=>setScreen(s)} mileageUrl={mileageUrl} labSafetyUrl={labSafetyUrl} isAdmin={isAdmin} onEditUrl={(type)=>{setEditingUrl(type);setUrlInput(type==='mileage'?mileageUrl:labSafetyUrl)}} moduleImages={moduleImages} isStudent={false} activeModules={activeModules} />}
       {!isStudent && view==='dashboard' && <DashboardView modules={modules} onNavigate={s=>setScreen(s)} mileageUrl={mileageUrl} labSafetyUrl={labSafetyUrl} moduleImages={moduleImages} />}
-
-      {showPicker && (
-        <DashboardIconPicker session={session} loginMode={loginMode}
-          onDone={() => setShowPicker(false)}
-        />
-      )}
 
       {editingUrl !== null && (
         <div style={{ position:'fixed', inset:0, background:'rgba(0,0,0,0.4)', zIndex:300, display:'flex', alignItems:'center', justifyContent:'center', padding:20 }}>

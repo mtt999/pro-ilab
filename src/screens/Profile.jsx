@@ -130,11 +130,12 @@ function SoloProfile({ session }) {
       {/* Tabs */}
       <div style={{ display: 'flex', borderBottom: '1px solid var(--border)', marginBottom: 24, overflowX: 'auto' }}>
         {[
-          { key: 'info',      label: '👤 My Info' },
-          { key: 'dashboard', label: '🎛️ Dashboard Icons' },
-          { key: 'password',  label: '🔑 Password' },
-          { key: 'photo',     label: '🖼️ Photo' },
-          { key: 'notifs',    label: '🔔 Notifications' },
+          { key: 'info',          label: '👤 My Info' },
+          { key: 'teammates',     label: '👥 Teammates' },
+          { key: 'dashboard',     label: '🎛️ Dashboard Icons' },
+          { key: 'notifications', label: '🔔 Notifications' },
+          { key: 'password',      label: '🔑 Password' },
+          { key: 'photo',         label: '🖼️ Photo' },
         ].map(t => (
           <button key={t.key} onClick={() => setActiveTab(t.key)}
             style={{ padding: '10px 22px', border: 'none', background: 'transparent', fontFamily: 'var(--sans)', fontSize: 14, fontWeight: 500, cursor: 'pointer', color: activeTab === t.key ? '#534AB7' : 'var(--text2)', borderBottom: `2px solid ${activeTab === t.key ? '#534AB7' : 'transparent'}`, transition: 'all 0.15s', whiteSpace: 'nowrap' }}>
@@ -156,7 +157,7 @@ function SoloProfile({ session }) {
 
       {activeTab === 'dashboard' && <DashboardIconsPanel session={session} />}
 
-      {activeTab === 'notifs' && <NotificationPrefsPanel userId={session?.userId} role="student" />}
+      {activeTab === 'notifications' && <NotificationPrefsPanel userId={session?.userId} role="solo" />}
 
       {activeTab === 'password' && (
         <div className="card">
@@ -203,7 +204,7 @@ function SoloProfile({ session }) {
 // DASHBOARD ICONS MANAGER — works for all roles
 // ══════════════════════════════════════════════════════════════
 function DashboardIconsPanel({ session }) {
-  const { toast } = useAppStore()
+  const { toast, setActiveModules } = useAppStore()
   const isSolo = session?.loginMode === 'solo'
   const loginMode = session?.loginMode || 'team'
 
@@ -267,6 +268,7 @@ function DashboardIconsPanel({ session }) {
       }
       toast('Dashboard icons saved ✓')
     } catch (e) { toast('Error saving preferences.') }
+    setActiveModules(modules)
     setSaving(false)
   }
 
@@ -337,7 +339,7 @@ function NotificationPrefsPanel({ userId, role }) {
   const { toast } = useAppStore()
 
   const SECTIONS = [
-    { title: '📅 Equipment Booking', desc: 'Notifications about your equipment reservations.', roles: ['student', 'user', 'admin'], events: [
+    { title: '📅 Equipment Booking', desc: 'Notifications about your equipment reservations.', roles: ['student', 'user', 'admin', 'solo'], events: [
       { key: 'booking_confirmed', label: 'Booking confirmed' },
       { key: 'booking_reminder',  label: 'Upcoming booking reminder (1 day before)' },
       { key: 'booking_cancelled', label: 'Booking cancelled' },
@@ -353,7 +355,7 @@ function NotificationPrefsPanel({ userId, role }) {
       { key: 'meeting_added',       label: 'New meeting task assigned to me' },
       { key: 'task_status_changed', label: 'Task status changed by someone else' },
     ]},
-    { title: '💬 Lab Messages', desc: 'Messages from the Contact Lab Manager feature.', roles: ['student', 'user', 'admin'], events: [
+    { title: '💬 Lab Messages', desc: 'Messages from the Contact Lab Manager feature.', roles: ['student', 'user', 'admin', 'solo'], events: [
       { key: 'message_reply', label: 'Reply received to my message' },
     ]},
   ].filter(s => s.roles.includes(role))
@@ -1130,6 +1132,7 @@ function AccessControl({ toast }) {
     { key: 'mileage',     label: 'Mileage Form',        icon: '🚗' },
     { key: 'labsafety',   label: 'Lab Safety',          icon: '🦺' },
     { key: 'pm',          label: 'Project Management',  icon: '📋' },
+    { key: 'barcode',     label: 'Barcode Scanner',     icon: '📷' },
     { key: 'profile',     label: 'Profile',             icon: '👤' },
   ]
   const [users, setUsers] = useState([])
@@ -1197,6 +1200,7 @@ function IconImageManager({ toast }) {
     { key: 'remessages',  label: 'Contact Lab Manager',icon: '💬', bg: '#e8f2ee' },
     { key: 'profile',     label: 'Profile',            icon: '👤', bg: '#f3eeff' },
     { key: 'pm',          label: 'Project Management', icon: '📋', bg: '#fff3e0' },
+    { key: 'barcode',     label: 'Barcode Scanner',    icon: '📷', bg: '#e0f7fa' },
   ]
   const [images, setImages] = useState({})
   const [uploading, setUploading] = useState(null)
