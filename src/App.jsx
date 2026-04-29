@@ -94,7 +94,7 @@ export default function App() {
       if (!allowed.includes(screen)) setScreen('dashboard')
     }
     if (screen === 'pm' && session?.role === 'student') setScreen('dashboard')
-    const INTERNAL = new Set(['dashboard', 'profile', 'inspection', 'results', 'project-detail'])
+    const INTERNAL = new Set(['dashboard', 'profile', 'inspection', 'results', 'project-detail', 'pm', 'barcode'])
     if ((session?.role === 'user' || session?.role === 'admin') && userAccess && !INTERNAL.has(screen)) {
       if (!userAccess.has(screen)) setScreen('dashboard')
     }
