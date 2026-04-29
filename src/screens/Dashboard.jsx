@@ -333,8 +333,10 @@ export default function Dashboard() {
   }
 
   const allModules = getModules(session?.role, loginMode, activeModules)
+  // Screens not managed by user_screen_access (always allowed if in activeModules)
+  const UNMANAGED_SCREENS = new Set(['profile', 'dashboard', 'pm', 'barcode'])
   const modules = userAccess
-    ? allModules.filter(m => m.external || !m.screen || userAccess.has(m.screen) || m.screen === 'profile' || m.screen === 'dashboard' || m.screen === 'pm')
+    ? allModules.filter(m => m.external || !m.screen || UNMANAGED_SCREENS.has(m.screen) || userAccess.has(m.screen))
     : allModules
 
   useEffect(() => { loadSettings() }, [])

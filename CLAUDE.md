@@ -89,3 +89,11 @@ Run `supabase_solo_workspace.sql` in the Supabase SQL Editor to create:
 - **Do not** route `projects` to `<Projects />` — it must go to `<ProjectMaterial />`
 - **Do not** define `TeammatesPanel` inline in Profile.jsx — it is imported from `src/components/TeammatesPanel.jsx`
 - **Do not** remove `setActiveModules(modules)` from `DashboardIconPicker.save()`
+
+### 4. New screens must be added to UNMANAGED_SCREENS in Dashboard.jsx
+
+`user_screen_access` controls which screens team users (role=user/admin) can see. Any screen whose `key` is NOT managed by the admin panel must be added to the `UNMANAGED_SCREENS` set in Dashboard.jsx, otherwise it will be silently hidden even when the user selects it in the icon picker.
+
+**Current UNMANAGED_SCREENS:** `profile`, `dashboard`, `pm`, `barcode`
+
+**Rule:** When adding a new module to `ALL_MODULES_META`, check whether its `screen` value is managed by `user_screen_access`. If not (i.e. the admin panel has no toggle for it), add it to `UNMANAGED_SCREENS` in Dashboard.jsx.
