@@ -1,6 +1,7 @@
 import { useAppStore } from '../store/useAppStore'
 import { sb } from '../lib/supabase'
 import { useState } from 'react'
+import { hashPassword, verifyPassword } from '../lib/crypto'
 
 function ILabLogo({ size = 120 }) {
   return (
@@ -105,10 +106,11 @@ function SignUpForm({ onSuccess, onCancel }) {
     const { data: existing } = await sb.from('solo_users').select('id').ilike('email', form.email.trim()).maybeSingle()
     if (existing) { setError('An account with this email already exists. Please sign in.'); setLoading(false); return }
 
+    const hashed = await hashPassword(form.password)
     const { data, error: insertErr } = await sb.from('solo_users').insert({
       name: form.name.trim(),
       email: form.email.trim().toLowerCase(),
-      password: form.password,
+      password: hashed,
       is_active: true,
       active_modules: [],
     }).select().single()
@@ -209,7 +211,12 @@ export default function Login() {
       const { data: adminSettings } = await sb.from('settings').select('value').eq('key', 'admin_email').maybeSingle()
       const adminEmail = adminSettings?.value || 'motlagh999@gmail.com'
       const { data: adminPass } = await sb.from('settings').select('value').eq('key', 'admin_password').maybeSingle()
-      if (identifierLower === adminEmail.toLowerCase() && password === (adminPass?.value || 'Motlagh@2026')) {
+      const storedAdminPass = adminPass?.value || 'Motlagh@2026'
+      if (identifierLower === adminEmail.toLowerCase() && await verifyPassword(password, storedAdminPass)) {
+        if (!storedAdminPass.startsWith('$2')) {
+          const hashed = await hashPassword(password)
+          await sb.from('settings').upsert({ key: 'admin_password', value: hashed })
+        }
         setSession({ role: 'admin', username: 'Admin', userId: null, adminLevel: 3, loginMode: 'team' })
         setLoading(false); return
       }
@@ -222,7 +229,11 @@ export default function Login() {
       }
       if (!user) { setError('No account found. Contact your organization admin.'); setLoading(false); return }
       if (!user.password) { setError('No password set. Contact your admin.'); setLoading(false); return }
-      if (user.password !== password) { setError('Incorrect password.'); setLoading(false); return }
+      if (!(await verifyPassword(password, user.password))) { setError('Incorrect password.'); setLoading(false); return }
+      if (!user.password.startsWith('$2')) {
+        const hashed = await hashPassword(password)
+        await sb.from('users').update({ password: hashed }).eq('id', user.id)
+      }
       const adminLevel = user.admin_level || 0
       const role = user.role === 'admin' || adminLevel >= 1 ? 'admin' : user.role
       setSession({ role, username: user.name, userId: user.id, email: user.email, adminLevel, photoUrl: user.photo_url, avatar: user.avatar, loginMode: 'team' })
@@ -233,7 +244,11 @@ export default function Login() {
       const { data: soloUser, error: soloErr } = await sb
         .from('solo_users').select('*').eq('is_active', true).ilike('email', identifierLower).maybeSingle()
       if (soloErr || !soloUser) { setError('No Solo account found. Please sign up first.'); setLoading(false); return }
-      if (soloUser.password !== password) { setError('Incorrect password.'); setLoading(false); return }
+      if (!(await verifyPassword(password, soloUser.password))) { setError('Incorrect password.'); setLoading(false); return }
+      if (soloUser.password && !soloUser.password.startsWith('$2')) {
+        const hashed = await hashPassword(password)
+        await sb.from('solo_users').update({ password: hashed }).eq('id', soloUser.id)
+      }
       setSession({
         role: 'solo', username: soloUser.name, userId: soloUser.id,
         email: soloUser.email, photoUrl: soloUser.photo_url, avatar: soloUser.avatar,

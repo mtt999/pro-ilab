@@ -2,6 +2,7 @@ import HelpPanel from '../components/HelpPanel'
 import { useAppStore } from '../store/useAppStore'
 import { sb } from '../lib/supabase'
 import { useState, useEffect, useRef } from 'react'
+import { hashPassword, verifyPassword } from '../lib/crypto'
 import DashboardIconPicker, { ALL_MODULES_META, PINNED_MODULES } from '../components/DashboardIconPicker'
 import StudentIconManager from '../components/StudentIconManager'
 import TeammatesPanel from '../components/TeammatesPanel'
@@ -73,8 +74,9 @@ function SoloProfile({ session }) {
     if (!pinForm.newPin || pinForm.newPin.length < 6) { setPinError('Min 6 characters.'); return }
     if (pinForm.newPin !== pinForm.confirm) { setPinError('Passwords do not match.'); return }
     const { data } = await sb.from('solo_users').select('password').eq('id', user.id).single()
-    if (data?.password && data.password !== pinForm.current) { setPinError('Current password is incorrect.'); return }
-    await sb.from('solo_users').update({ password: pinForm.newPin }).eq('id', user.id)
+    if (!(await verifyPassword(pinForm.current, data?.password))) { setPinError('Current password is incorrect.'); return }
+    const hashed = await hashPassword(pinForm.newPin)
+    await sb.from('solo_users').update({ password: hashed }).eq('id', user.id)
     toast('Password updated ✓'); setPinForm({ current: '', newPin: '', confirm: '' })
   }
 
@@ -457,9 +459,11 @@ function AdminSettings({ session, toast }) {
     if (form.newPassword !== form.confirmPassword) { setError('Passwords do not match.'); return }
     if (form.newPassword.length < 6) { setError('Password must be at least 6 characters.'); return }
     setSaving(true)
-    const { data: adminPass } = await sb.from('settings').select('value').eq('key', 'admin_password').maybeSingle()
-    if (form.currentPassword !== (adminPass?.value || 'Motlagh@2026')) { setError('Current password is incorrect.'); setSaving(false); return }
-    await sb.from('settings').upsert({ key: 'admin_password', value: form.newPassword })
+    const { data: adminPassData } = await sb.from('settings').select('value').eq('key', 'admin_password').maybeSingle()
+    const storedPass = adminPassData?.value || 'Motlagh@2026'
+    if (!(await verifyPassword(form.currentPassword, storedPass))) { setError('Current password is incorrect.'); setSaving(false); return }
+    const hashed = await hashPassword(form.newPassword)
+    await sb.from('settings').upsert({ key: 'admin_password', value: hashed })
     if (form.email) await sb.from('settings').upsert({ key: 'admin_email', value: form.email })
     toast('Password updated ✓')
     setForm({ email: '', currentPassword: '', newPassword: '', confirmPassword: '' })
@@ -488,7 +492,6 @@ function StudentsPanel({ toast, session }) {
   const [iconStudent, setIconStudent] = useState(null)
   const [importPreview, setImportPreview] = useState(null)
   const [importing, setImporting] = useState(false)
-  const [revealedId, setRevealedId] = useState(null)
   const fileRef = useRef(null)
 
   useEffect(() => { load() }, [])
@@ -510,7 +513,7 @@ function StudentsPanel({ toast, session }) {
     if (!form.firstName.trim() && !form.lastName.trim()) { toast('Name is required.'); return }
     if (!id && !form.password) { toast('Password is required.'); return }
     const payload = { name: form.lastName.trim(), email: form.firstName.trim() || null, phone: form.emailAddr || null, degree: form.supervisor || null, year_semester: form.year_semester || null, project_group: form.project_group || null, role: 'student', is_active: true, admin_level: 0, pin: '' }
-    if (form.password && form.password.trim()) payload.password = form.password.trim()
+    if (form.password && form.password.trim()) payload.password = await hashPassword(form.password.trim())
     if (id) {
       const { error } = await sb.from('users').update(payload).eq('id', id)
       if (error) { toast('Error: ' + error.message); return }
@@ -597,16 +600,7 @@ function StudentsPanel({ toast, session }) {
                 </div>
                 <div style={{ fontSize: 12, color: 'var(--text3)', fontFamily: 'var(--mono)', display: 'flex', gap: 10, flexWrap: 'wrap', marginTop: 3 }}>
                   {sEmail(s) && <span>📧 {sEmail(s)}</span>}
-                  {s.password && (() => {
-                    const isOwn = session?.userId === s.id || session?.username === s.email || session?.username === sEmail(s)
-                    if (!isOwn) return <span style={{ fontSize: 11, color: 'var(--text3)' }}>🔑 ••••••••</span>
-                    const revealed = revealedId === s.id
-                    return (
-                      <span style={{ cursor: 'pointer', userSelect: 'none' }} onClick={() => setRevealedId(revealed ? null : s.id)} title={revealed ? 'Hide password' : 'Click to reveal your password'}>
-                        🔑 {revealed ? s.password : '••••••••'} <span style={{ fontSize: 10, color: 'var(--accent)' }}>{revealed ? '🙈 hide' : '👁 show'}</span>
-                      </span>
-                    )
-                  })()}
+                  {s.password && <span style={{ fontSize: 11, color: 'var(--text3)' }}>🔑 ••••••••</span>}
                   {s.project_group && <span>{s.project_group}</span>}
                 </div>
               </div>
@@ -685,14 +679,13 @@ function StaffListPanel({ toast, session }) {
   const [loading, setLoading] = useState(true)
   const [showModal, setShowModal] = useState(false)
   const [editStaff, setEditStaff] = useState(null)
-  const [revealedId, setRevealedId] = useState(null)
   useEffect(() => { load() }, [])
   async function load() { setLoading(true); const { data } = await sb.from('users').select('*').eq('role', 'user').order('name'); setStaff(data || []); setLoading(false) }
   async function saveStaff(form, id) {
     if (!form.name.trim()) { toast('Name is required.'); return }
     if (!id && !form.password) { toast('Password is required.'); return }
     const payload = { name: form.name.trim(), email: form.email || null, phone: form.phone || null, role: 'user', is_active: true, admin_level: 0, pin: '' }
-    if (form.password && form.password.trim()) payload.password = form.password.trim()
+    if (form.password && form.password.trim()) payload.password = await hashPassword(form.password.trim())
     if (id) { const { error } = await sb.from('users').update(payload).eq('id', id); if (error) { toast('Error: ' + error.message); return } }
     else { const { error } = await sb.from('users').insert(payload); if (error) { toast('Error: ' + error.message); return } }
     setShowModal(false); setEditStaff(null); load(); toast('Staff saved ✓')
@@ -719,16 +712,7 @@ function StaffListPanel({ toast, session }) {
                 </div>
                 <div style={{ fontSize: 12, color: 'var(--text3)', fontFamily: 'var(--mono)', display: 'flex', gap: 10, flexWrap: 'wrap', marginTop: 2 }}>
                   {s.email && <span>📧 {s.email}</span>}
-                  {s.password && (() => {
-                    const isOwn = session?.userId === s.id || session?.username === s.email
-                    if (!isOwn) return <span style={{ fontSize: 11, color: 'var(--text3)' }}>🔑 ••••••••</span>
-                    const revealed = revealedId === s.id
-                    return (
-                      <span style={{ cursor: 'pointer', userSelect: 'none' }} onClick={() => setRevealedId(revealed ? null : s.id)} title={revealed ? 'Hide password' : 'Click to reveal your password'}>
-                        🔑 {revealed ? s.password : '••••••••'} <span style={{ fontSize: 10, color: 'var(--accent)' }}>{revealed ? '🙈 hide' : '👁 show'}</span>
-                      </span>
-                    )
-                  })()}
+                  {s.password && <span style={{ fontSize: 11, color: 'var(--text3)' }}>🔑 ••••••••</span>}
                 </div>
                 <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginTop: 8 }}>
                   <span style={{ fontSize: 11, color: 'var(--text3)' }}>Change role:</span>
@@ -931,8 +915,9 @@ function UserProfileForm({ session, toast }) {
     if (!pinForm.newPin || pinForm.newPin.length < 6) { setPinError('New password must be at least 6 characters.'); return }
     if (pinForm.newPin !== pinForm.confirm) { setPinError('Passwords do not match.'); return }
     const { data } = await sb.from('users').select('password').eq('id', user.id).single()
-    if (data?.password && data.password !== pinForm.current) { setPinError('Current password is incorrect.'); return }
-    await sb.from('users').update({ password: pinForm.newPin }).eq('id', user.id)
+    if (!(await verifyPassword(pinForm.current, data?.password))) { setPinError('Current password is incorrect.'); return }
+    const hashed = await hashPassword(pinForm.newPin)
+    await sb.from('users').update({ password: hashed }).eq('id', user.id)
     toast('Password updated ✓'); setPinForm({ current: '', newPin: '', confirm: '' })
   }
 
@@ -1059,12 +1044,6 @@ function UserProfileForm({ session, toast }) {
         <div className="card">
           <div style={{ fontWeight: 600, fontSize: 15, marginBottom: 4 }}>Change password</div>
           <div style={{ fontSize: 13, color: 'var(--text3)', marginBottom: 16 }}>Minimum 6 characters.</div>
-          {user?.password && (
-            <div style={{ display: 'flex', alignItems: 'center', gap: 10, background: 'var(--surface2)', borderRadius: 8, padding: '10px 14px', marginBottom: 16 }}>
-              <span style={{ fontSize: 13, color: 'var(--text3)' }}>Your current password:</span>
-              <span style={{ fontFamily: 'var(--mono)', fontWeight: 600, fontSize: 14, color: 'var(--text)' }}>{user.password}</span>
-            </div>
-          )}
           <div className="field"><label>Current password</label><input type="password" value={pinForm.current} onChange={e => { setPinForm(f => ({ ...f, current: e.target.value })); setPinError('') }} /></div>
           <div className="grid-2">
             <div className="field"><label>New password</label><input type="password" value={pinForm.newPin} onChange={e => { setPinForm(f => ({ ...f, newPin: e.target.value })); setPinError('') }} /></div>
