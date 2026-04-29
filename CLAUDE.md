@@ -90,10 +90,17 @@ Run `supabase_solo_workspace.sql` in the Supabase SQL Editor to create:
 - **Do not** define `TeammatesPanel` inline in Profile.jsx — it is imported from `src/components/TeammatesPanel.jsx`
 - **Do not** remove `setActiveModules(modules)` from `DashboardIconPicker.save()`
 
-### 4. New screens must be added to UNMANAGED_SCREENS in Dashboard.jsx
+### 4. New screens must be added to BOTH UNMANAGED_SCREENS and INTERNAL
 
-`user_screen_access` controls which screens team users (role=user/admin) can see. Any screen whose `key` is NOT managed by the admin panel must be added to the `UNMANAGED_SCREENS` set in Dashboard.jsx, otherwise it will be silently hidden even when the user selects it in the icon picker.
+There are two separate sets that must stay in sync:
 
-**Current UNMANAGED_SCREENS:** `profile`, `dashboard`, `pm`, `barcode`
+- **`UNMANAGED_SCREENS`** in `Dashboard.jsx` — controls whether the icon *shows* on the dashboard for team users
+- **`INTERNAL`** in `App.jsx` — controls whether navigating to the screen is *allowed* without a `user_screen_access` entry
 
-**Rule:** When adding a new module to `ALL_MODULES_META`, check whether its `screen` value is managed by `user_screen_access`. If not (i.e. the admin panel has no toggle for it), add it to `UNMANAGED_SCREENS` in Dashboard.jsx.
+If a screen is in `UNMANAGED_SCREENS` but NOT in `INTERNAL`, the icon shows but clicking it redirects back to dashboard. Both sets must contain the same unmanaged keys.
+
+**Current values (must match):**
+- `UNMANAGED_SCREENS` (Dashboard.jsx): `profile`, `dashboard`, `pm`, `barcode`
+- `INTERNAL` (App.jsx): `dashboard`, `profile`, `inspection`, `results`, `project-detail`, `pm`, `barcode`
+
+**Rule:** When adding a new module to `ALL_MODULES_META` that is not in `user_screen_access`, add its `screen` key to BOTH sets.
