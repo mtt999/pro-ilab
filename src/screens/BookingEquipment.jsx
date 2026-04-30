@@ -649,7 +649,7 @@ function MultiBookingModal({ equipmentList, defaultSlot, session, onSave, onClos
 // TAB 1 — BOOKING CALENDAR
 // ══════════════════════════════════════════════════════════════
 function BookingCalendar({ session }) {
-  const { toast } = useAppStore()
+  const { toast, scanEquipmentId, clearScanEquipmentId } = useAppStore()
   const [equipment, setEquipment] = useState([])
   const [selectedEq, setSelectedEq] = useState([])
   const [bookings, setBookings] = useState([])
@@ -670,6 +670,15 @@ function BookingCalendar({ session }) {
   useEffect(() => { loadEquipment(); loadNotifications() }, [])
   useEffect(() => { loadBookings() }, [selectedEq, weekStart, monthDate, calView])
   useEffect(() => { loadBookings() }, [])
+
+  // Auto-select and open booking modal when arriving from a QR scan
+  useEffect(() => {
+    if (scanEquipmentId && equipment.length > 0) {
+      setSelectedEq([scanEquipmentId])
+      setShowBookingModal(true)
+      clearScanEquipmentId()
+    }
+  }, [scanEquipmentId, equipment])
   // Auto-refresh every 30 seconds
   useEffect(() => {
     const interval = setInterval(loadBookings, 30000)

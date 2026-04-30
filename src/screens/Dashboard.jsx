@@ -5,15 +5,18 @@ import { ALL_MODULES_META, PINNED_MODULES } from '../components/DashboardIconPic
 
 function getModules(role, loginMode, activeModules) {
   const roleKey = loginMode === 'solo' ? 'solo' : 'team'
+  const isStaff = role === 'admin' || role === 'user'
   const studentAllowed = ['projects','training','booking','equipmenthub','mileage','labsafety','remessages','barcode','profile']
   const base = ALL_MODULES_META.filter(m => {
     if (!m.roles.includes(roleKey)) return false
     if (role === 'student' && !studentAllowed.includes(m.key)) return false
+    if (m.adminOnly && !isStaff) return false
     return true
   })
   if (activeModules && activeModules.length > 0) {
     const allowed = new Set([...activeModules, ...PINNED_MODULES])
-    return base.filter(m => allowed.has(m.key))
+    // adminOnly modules always appear for admin/staff even if added after dashboard was saved
+    return base.filter(m => allowed.has(m.key) || (role === 'admin' && m.adminOnly))
   }
   return base
 }
@@ -33,6 +36,7 @@ function getAllModulesForStudent() {
     { key: 'pm',           screen: 'pm',            label: 'Project Management',        sub: 'Tasks, meetings & team chat',      icon: '📋', bg: '#fff3e0', color: '#ff6b00', locked: true },
     { key: 'profile',      screen: 'profile',       label: 'Profile',                   sub: 'Your info & settings',             icon: '👤', bg: '#f3eeff', color: '#7c4dbd' },
     { key: 'supply_admin', screen: 'home',          label: 'Admin Tools',               sub: 'Rooms, supplies & settings',       icon: '⚙️', bg: '#f5f5f5', color: '#555', locked: true },
+    { key: 'barcodeqr',   screen: 'barcodeqr',     label: 'Barcode/QR Scan',           sub: 'Equipment QR code management',     icon: '🔲', bg: '#f0f4ff', color: '#1a56db', locked: true },
   ]
 }
 
@@ -332,7 +336,17 @@ export default function Dashboard() {
     } catch(e) {}
   }
 
-  const allModules = getModules(session?.role, loginMode, activeModules)
+  const allModules = (() => {
+    const base = getModules(session?.role, loginMode, activeModules)
+    // For staff: auto-include adminOnly modules that admin has explicitly granted via user_screen_access
+    if (session?.role === 'user' && userAccess) {
+      const baseKeys = new Set(base.map(m => m.key))
+      ALL_MODULES_META.forEach(m => {
+        if (m.adminOnly && m.screen && userAccess.has(m.screen) && !baseKeys.has(m.key)) base.push(m)
+      })
+    }
+    return base
+  })()
   // Screens not managed by user_screen_access (always allowed if in activeModules)
   const UNMANAGED_SCREENS = new Set(['profile', 'dashboard', 'pm', 'barcode'])
   const modules = userAccess
@@ -382,7 +396,16 @@ export default function Dashboard() {
           <div style={{ fontSize:13, color:'var(--text3)', fontFamily:'var(--mono)' }}>{dateStr} · ICT Lab</div>
         </div>
         <div style={{ display:'flex', gap:8, alignItems:'center' }}>
-
+          {/* Customize button: all non-students can customize their dashboard */}
+          {!isStudent && (
+            <button onClick={() => setShowPicker(true)}
+              style={{ padding:'6px 14px', border:'1px solid var(--border)', borderRadius:8, background:'var(--surface)', fontFamily:'var(--sans)', fontSize:13, fontWeight:500, cursor:'pointer', color:'var(--text2)', display:'flex', alignItems:'center', gap:6, transition:'all 0.15s' }}
+              onMouseEnter={e=>{e.currentTarget.style.borderColor='var(--accent)';e.currentTarget.style.color='var(--accent)'}}
+              onMouseLeave={e=>{e.currentTarget.style.borderColor='var(--border)';e.currentTarget.style.color='var(--text2)'}}
+            >
+              🎛️ Customize
+            </button>
+          )}
           {!isStudent && (
             <div style={{ display:'flex', background:'var(--surface2)', borderRadius:'var(--radius)', padding:3, gap:2 }}>
               <button onClick={() => switchView('grid')} style={{ padding:'6px 14px', border:'none', borderRadius:8, fontFamily:'var(--sans)', fontSize:13, fontWeight:500, cursor:'pointer', background:view==='grid'?'var(--surface)':'transparent', color:view==='grid'?'var(--text)':'var(--text2)', transition:'all 0.15s' }}>⊞ Cards</button>

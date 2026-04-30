@@ -16,6 +16,7 @@ export const ALL_MODULES_META = [
   { key: 'mileage',      screen: null,           label: 'Mileage Form',        sub: 'Submit mileage reimbursement',    icon: '🚗', bg: '#fdf0ed', color: '#c84b2f', roles: ['team', 'solo'], external: true },
   { key: 'labsafety',    screen: null,           label: 'Lab Safety',          sub: 'Safety training & certification', icon: '🦺', bg: '#fef3c7', color: '#92400e', roles: ['team', 'solo'], external: true },
   { key: 'profile',      screen: 'profile',      label: 'Profile',             sub: 'Your info & settings',            icon: '👤', bg: '#f3eeff', color: '#7c4dbd', roles: ['team', 'solo'] },
+  { key: 'barcodeqr',   screen: 'barcodeqr',   label: 'Barcode/QR Scan',     sub: 'Equipment QR code management',    icon: '🔲', bg: '#f0f4ff', color: '#1a56db', roles: ['team'], adminOnly: true },
 ]
 
 export const PINNED_MODULES = ['profile']
@@ -53,8 +54,8 @@ function ModuleToggleCard({ module, selected, onToggle, pinned }) {
 
 export default function DashboardIconPicker({ session, loginMode, onDone }) {
   const { setActiveModules } = useAppStore()
-  const available = ALL_MODULES_META
-
+  const baseAvailable = ALL_MODULES_META.filter(m => !m.adminOnly || session?.role === 'admin')
+  const [available, setAvailable] = useState(baseAvailable)
   const [selected, setSelected] = useState(null)
   const [allowedPool, setAllowedPool] = useState(null)
   const [saving, setSaving] = useState(false)
@@ -65,19 +66,30 @@ export default function DashboardIconPicker({ session, loginMode, onDone }) {
     try {
       let savedModules = null
       let pool = null
+      // Start with the base list; may be expanded for staff below
+      let localAvailable = ALL_MODULES_META.filter(m => !m.adminOnly || session?.role === 'admin')
 
       if (loginMode === 'solo' && session?.userId) {
         const { data } = await sb.from('solo_users').select('active_modules').eq('id', session.userId).maybeSingle()
         savedModules = data?.active_modules
       } else if (session?.userId) {
-        const { data } = await sb.from('user_dashboard_prefs')
-          .select('active_modules, allowed_modules')
-          .eq('user_id', session.userId).maybeSingle()
-        savedModules = data?.active_modules
-        // Students: staff sets which icons they're allowed to pick from
+        const queries = [
+          sb.from('user_dashboard_prefs').select('active_modules, allowed_modules').eq('user_id', session.userId).maybeSingle(),
+        ]
+        // For staff: also load which screens admin has granted them
+        if (session?.role === 'user') {
+          queries.push(sb.from('user_screen_access').select('screen_key').eq('user_id', session.userId))
+        }
+        const [prefsRes, accessRes] = await Promise.all(queries)
+        savedModules = prefsRes.data?.active_modules
+
         if (session?.role === 'student') {
-          pool = data?.allowed_modules || []
+          pool = prefsRes.data?.allowed_modules || []
           setAllowedPool(pool)
+        } else if (session?.role === 'user' && accessRes?.data?.length) {
+          // Staff: expand available to include any adminOnly modules admin explicitly granted
+          const accessKeys = new Set(accessRes.data.map(r => r.screen_key))
+          localAvailable = ALL_MODULES_META.filter(m => !m.adminOnly || accessKeys.has(m.screen))
         }
       } else {
         // admin (no userId)
@@ -85,10 +97,12 @@ export default function DashboardIconPicker({ session, loginMode, onDone }) {
         savedModules = saved ? JSON.parse(saved) : null
       }
 
+      setAvailable(localAvailable)
+
       // Determine which modules to display in the picker
       const displayable = pool !== null
-        ? available.filter(m => pool.includes(m.key))
-        : available
+        ? localAvailable.filter(m => pool.includes(m.key))
+        : localAvailable
 
       if (savedModules?.length) {
         // Restore saved, filtered to what's currently displayable
@@ -98,7 +112,7 @@ export default function DashboardIconPicker({ session, loginMode, onDone }) {
         setSelected(new Set(displayable.map(m => m.key)))
       }
     } catch (e) {
-      setSelected(new Set(available.map(m => m.key)))
+      setSelected(new Set(baseAvailable.map(m => m.key)))
     }
   }
 

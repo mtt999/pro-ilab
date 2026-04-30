@@ -22,15 +22,25 @@ import PM from './screens/PM'
 import Toast from './components/Toast'
 import DashboardIconPicker from './components/DashboardIconPicker'
 import BarcodeScannerScreen from './screens/BarcodeScannerScreen'
+import BarcodeManager from './screens/BarcodeManager'
+import EquipmentScan from './screens/EquipmentScan'
 
 // Detect if we're on the /admin route
 const IS_ADMIN_ROUTE = window.location.pathname.endsWith('/admin') || window.location.pathname.endsWith('/admin/')
 
+// Detect equipment scan from QR code: ?eq=<uuid>
+const SCAN_EQ_ID = new URLSearchParams(window.location.search).get('eq')
+
 export default function App() {
-  const { session, screen, refreshCache, setScreen, setActiveModules } = useAppStore()
+  const { session, screen, refreshCache, setScreen, setActiveModules, setScanEquipmentId } = useAppStore()
   const [loading, setLoading] = useState(true)
   const [userAccess, setUserAccess] = useState(null)
   const [showIconPicker, setShowIconPicker] = useState(null)
+
+  // Store the equipment ID from the QR code URL param so Login can redirect after auth
+  useEffect(() => {
+    if (SCAN_EQ_ID) setScanEquipmentId(SCAN_EQ_ID)
+  }, [])
 
   useEffect(() => {
     const loginMode = localStorage.getItem('ilab_login_mode')
@@ -44,6 +54,8 @@ export default function App() {
   useEffect(() => {
     if (session?.loginMode) {
       localStorage.setItem('ilab_login_mode', session.loginMode)
+      // After login, if there's a pending QR scan redirect to the equipment scan screen
+      if (SCAN_EQ_ID) setScreen('equipmentscan')
     } else if (!session) {
       localStorage.removeItem('ilab_login_mode')
       setShowIconPicker(null)
@@ -58,6 +70,8 @@ export default function App() {
 
   async function checkFirstLogin(userId, loginMode) {
     try {
+      // Don't interrupt with the icon picker when the user arrived via a QR scan
+      if (SCAN_EQ_ID) { setShowIconPicker(false); return }
       if (!userId) {
         const done = localStorage.getItem('ilab_admin_dashboard_set') === 'true'
         setShowIconPicker(!done)
@@ -90,11 +104,12 @@ export default function App() {
 
   useEffect(() => {
     if (session?.role === 'student') {
-      const allowed = ['dashboard', 'projects', 'project-detail', 'training', 'profile', 'equipmenthub', 'booking', 'remessages', 'barcode']
+      const allowed = ['dashboard', 'projects', 'project-detail', 'training', 'profile', 'equipmenthub', 'booking', 'remessages', 'barcode', 'equipmentscan']
       if (!allowed.includes(screen)) setScreen('dashboard')
     }
     if (screen === 'pm' && session?.role === 'student') setScreen('dashboard')
-    const INTERNAL = new Set(['dashboard', 'profile', 'inspection', 'results', 'project-detail', 'pm', 'barcode'])
+    // equipmentscan, barcodeqr, barcode bypass per-user access control
+    const INTERNAL = new Set(['dashboard', 'profile', 'inspection', 'results', 'project-detail', 'pm', 'barcode', 'equipmentscan', 'barcodeqr'])
     if ((session?.role === 'user' || session?.role === 'admin') && userAccess && !INTERNAL.has(screen)) {
       if (!userAccess.has(screen)) setScreen('dashboard')
     }
@@ -130,6 +145,8 @@ export default function App() {
     remessages: <REMessages />,
     pm: <PM />,
     barcode: <BarcodeScannerScreen />,
+    barcodeqr: <BarcodeManager />,
+    equipmentscan: <EquipmentScan />,
   }
 
   return (

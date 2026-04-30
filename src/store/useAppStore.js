@@ -60,4 +60,9 @@ export const useAppStore = create((set, get) => ({
   // ── Current project ──
   currentProjectId: null,
   setCurrentProjectId: (id) => set({ currentProjectId: id }),
+
+  // ── Equipment QR scan (from URL param ?eq=<uuid>) ──
+  scanEquipmentId: null,
+  setScanEquipmentId: (id) => set({ scanEquipmentId: id }),
+  clearScanEquipmentId: () => set({ scanEquipmentId: null }),
 }))

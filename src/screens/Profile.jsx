@@ -441,7 +441,7 @@ function AdminProfile() {
       </div>
       {adminTab === 'admin'     && <AdminSettings session={session} toast={toast} />}
       {adminTab === 'students'  && <StudentsPanel toast={toast} session={session} />}
-      {adminTab === 'staff'     && <StaffPanel toast={toast} />}
+      {adminTab === 'staff'     && <StaffPanel toast={toast} session={session} />}
       {adminTab === 'icons'     && <IconImageManager toast={toast} />}
       {adminTab === 'dashboard' && <DashboardIconsPanel session={session} />}
       {adminTab === 'notifs'    && <NotificationPrefsPanel userId={session?.userId} role="admin" />}
@@ -656,7 +656,7 @@ function StudentModal({ student, onClose, onSave }) {
   )
 }
 
-function StaffPanel({ toast }) {
+function StaffPanel({ toast, session }) {
   const [staffTab, setStaffTab] = useState('list')
   return (
     <div>
@@ -1113,6 +1113,7 @@ function AccessControl({ toast }) {
     { key: 'pm',          label: 'Project Management',  icon: '📋' },
     { key: 'barcode',     label: 'Barcode Scanner',     icon: '📷' },
     { key: 'profile',     label: 'Profile',             icon: '👤' },
+    { key: 'barcodeqr',  label: 'Barcode/QR Scan',     icon: '🔲' },
   ]
   const [users, setUsers] = useState([])
   const [selected, setSelected] = useState(null)

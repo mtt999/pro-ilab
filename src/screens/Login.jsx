@@ -176,9 +176,12 @@ function SignUpForm({ onSuccess, onCancel }) {
 }
 
 // ── Main Login ─────────────────────────────────────────────────────────────
+const QR_SCAN_EQ = new URLSearchParams(window.location.search).get('eq')
+
 export default function Login() {
   const { setSession, setLoginMode, setSharedWorkspaces } = useAppStore()
-  const [mode, setMode]             = useState(null)
+  // When arriving from a QR code scan, default to Solo mode so visitors can sign up
+  const [mode, setMode]             = useState(QR_SCAN_EQ ? 'solo' : null)
   const [identifier, setIdentifier] = useState('')
   const [password, setPassword]     = useState('')
   const [error, setError]           = useState('')
@@ -285,6 +288,19 @@ export default function Login() {
             <SignUpForm onSuccess={handleSignUpSuccess} onCancel={() => setShowSignUp(false)} />
           ) : (
             <>
+              {/* QR scan context banner */}
+              {QR_SCAN_EQ && (
+                <div style={{ display: 'flex', alignItems: 'flex-start', gap: 10, padding: '12px 14px', background: '#fff3e0', border: '1px solid #ffcc80', borderRadius: 10, marginBottom: 18 }}>
+                  <div style={{ fontSize: 22, flexShrink: 0, lineHeight: 1 }}>🔲</div>
+                  <div>
+                    <div style={{ fontWeight: 700, fontSize: 13, color: '#e65100', marginBottom: 3 }}>Equipment QR Code Scanned</div>
+                    <div style={{ fontSize: 12, color: '#7c4d00', lineHeight: 1.5 }}>
+                      Log in or create a free <strong>iLab Solo</strong> account to view equipment info, book a session, and more.
+                    </div>
+                  </div>
+                </div>
+              )}
+
               <div style={{ fontSize: 12, fontWeight: 600, color: 'var(--text3)', textTransform: 'uppercase', letterSpacing: '0.07em', marginBottom: 10, textAlign: 'center' }}>
                 How are you using iLab?
               </div>
@@ -348,12 +364,23 @@ export default function Login() {
                 </button>
               </form>
 
-              {mode === 'solo' && (
+              {mode === 'solo' && !QR_SCAN_EQ && (
                 <div style={{ textAlign: 'center', marginTop: 14, fontSize: 12, color: 'var(--text3)' }}>
                   New to iLab Solo?{' '}
                   <span style={{ color: '#534AB7', fontWeight: 600, cursor: 'pointer' }}
                     onClick={() => { setShowSignUp(true); setError('') }}>Create a free account</span>
                 </div>
+              )}
+              {mode === 'solo' && QR_SCAN_EQ && (
+                <button
+                  type="button"
+                  onClick={() => { setShowSignUp(true); setError('') }}
+                  style={{ width: '100%', marginTop: 12, padding: '11px', background: 'transparent', color: '#534AB7', border: '2px solid #534AB7', borderRadius: 8, fontWeight: 700, fontSize: 14, cursor: 'pointer', transition: 'all 0.15s' }}
+                  onMouseEnter={e => { e.currentTarget.style.background = '#EEEDFE' }}
+                  onMouseLeave={e => { e.currentTarget.style.background = 'transparent' }}
+                >
+                  ✨ New here? Create a free iLab Solo account
+                </button>
               )}
 
               {mode === 'team' && (
